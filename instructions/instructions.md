@@ -4,7 +4,8 @@
 
 # Core funcionalities
 ## 1. Сбор и агрегация данных с различных бирж по API
-- Данные собираются с трех бирж: Hyperliquid, Binance, Bybit 
+- Данные собираются с трех бирж: Hyperliquid, Binance, Bybit
+- Данные собираются по API, используя документацию и примеры из этой инструкции: ## 1. Hyperliquid API Documentation, ## 2 Binance API Documentation, ## 3 Bybit API Documentation
 - Данные собираются в реальном времени. На всех трех биржах в один момент времени
 - Данные собираются раз в 10 секунд
 - Данные выводятся в виде таблицы на странице под названием Funding Comparison
@@ -29,10 +30,12 @@
 - Страница называется "Open Positions"
 - На этой странице пользователь может увидеть информацию об открытых позициях на биржах
 - Данные выводятся в виде таблицы
-  - Таблица состоит из четырех колонок: "Coin", "Side", "Size", "Commissions"
+  | Coin Ticker | Size | Size usd | Time open | Base point open | Commission total | Funding1 | funding2 | Time1 | Time2 | APR | Button Calculate |
+  | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+  | Валютная пара, по которой набрана позиция, например BTC/USDT | Размер позиции в токенах, например 1.43 BTC | Размер позиции в USDT, например 128000 USDT | Время в которое начали набирать позицию. Т.е. Время в которое размещен первый ордер | Разница между фактическими (по которым исполнились ордера) ценами между биржами, выраженная в количестве бп - базовых пунктов (1 бп - 0,01%) | На момент, когда ордера еще открыты - Общая сумма комиссий за открытие ордеров на обеих биржах. При закрытии ордеров сюда плюсуется еще комиссия за закрытие. | Фандинг на первой бирже | Фандинг на второй бирже | Время в которое биржей взимается (или выплачивается) первый фандинг. На разных биржах это по-разному. Hyperliquid взимает раз в 1 час. Например позиция открыта в 14-32, фандинг берется в 15-00. На Binance и Bybit фандинг взимается раз в 8 часов. В 00-00, 08-00, 16-00 UTC | Время для расчета APR. Указывается пользователем в ячейке. По умолчанию в ячейке текущее время. В формате DD.MM.YYYY HH:MI Указывать можно время больше, чем Time1 и меньше либо равно текущему, иначе выводится предупреждение об ошибке | Годовая доходность выраженная в процентах. Высчитывается из разницы в фандингах между биржами. С момента времени в ячейке Time1 до времени в ячейке Time2 | Здесь кнопка CALCULATE. По которой актуализируются данные в ячейках |
 
 # Doc
-## 1. Hyperliquid API
+## 1. Hyperliquid API Documentation
 - [API Reference](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api)
 - Retrieve perpetuals asset contexts (includes mark price, current funding, open interest, etc)
 POST
@@ -120,7 +123,7 @@ POST
     ]
     ]
 
-## 2. Binance API
+## 2. Binance API Documentation
 - [API Reference](https://developers.binance.com/docs/derivatives/usds-margined-futures/general-info)
 
 - Get Funding Rate Info
@@ -149,7 +152,7 @@ POST
     ]
     ```
        
-## 3. Bybit API
+## 3. Bybit API Documentation
 - [API Reference](https://bybit-exchange.github.io/docs/v5/)
 
 - Get Funding Rate History
