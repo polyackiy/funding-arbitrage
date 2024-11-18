@@ -38,28 +38,61 @@ import {
   SortingState,
   flexRender,
 } from '@tanstack/react-table';
-import { ChevronDown, ChevronUp, ChevronsUpDown, Pin } from 'lucide-react';
+import { ChevronDown, ChevronUp, ChevronsUpDown, Pin, PinOff, Loader2, ArrowUpDown } from 'lucide-react';
+import { DataTableColumnHeader } from "@/components/ui/table";
 
 interface FundingTableProps {
   data: CombinedFundingData[];
   onOrderPlacement: (symbol: string, exchanges: string[]) => void;
   progress: number;
+  isPaused: boolean;
+  setIsPaused: (paused: boolean) => void;
 }
 
-export function FundingTable({ data, onOrderPlacement, progress }: FundingTableProps) {
+export function FundingTable({ 
+  data, 
+  onOrderPlacement, 
+  progress, 
+  isPaused, 
+  setIsPaused 
+}: FundingTableProps) {
   const [selectedExchanges, setSelectedExchanges] = useState<{[key: string]: string[]}>({});
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(25);
   const [pageIndex, setPageIndex] = useState(0);
   const [pinnedSymbols, setPinnedSymbols] = useLocalStorage<Set<string>>("pinnedSymbols", new Set());
 
-  const formatRate = (rate: number | undefined) => {
-    if (rate === undefined) return 'N/A';
-    return `${(rate * 100).toFixed(4)}%`;
+  const formatRate = (rate: number | null) => {
+    if (rate === null) return 'N/A';
+    // Convert hourly rate to annual (24 hours * 365 days)
+    const annualRate = rate * 24 * 365;
+    return `${(annualRate * 100).toFixed(2)}%`;
   };
 
-  const togglePinned = (symbol: string) => {
+  const calculateSpread = (impactPxs: [number | null, number | null] | undefined) => {
+    if (!impactPxs || impactPxs[0] === null || impactPxs[1] === null) return null;
+    const [buyPrice, sellPrice] = impactPxs;
+    // Рассчитываем спред в базисных пунктах: (sellPrice - buyPrice) / sellPrice * 10000
+    return ((sellPrice - buyPrice) / sellPrice) * 10000;
+  };
+
+  const formatSpread = (spread: number | null, isComplete: boolean | undefined) => {
+    if (spread === null) return 'N/A';
+    if (!isComplete) {
+      return (
+        <div className="flex items-center space-x-2">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span className="text-xs text-muted-foreground">
+            (loading)
+          </span>
+        </div>
+      );
+    }
+    return Math.round(spread).toString();
+  };
+
+  const handlePinToggle = (symbol: string) => {
     const newPinnedSymbols = new Set(pinnedSymbols);
     if (newPinnedSymbols.has(symbol)) {
       newPinnedSymbols.delete(symbol);
@@ -69,52 +102,94 @@ export function FundingTable({ data, onOrderPlacement, progress }: FundingTableP
     setPinnedSymbols(newPinnedSymbols);
   };
 
+  // Sort data before passing it to the table
   const sortedData = useMemo(() => {
-    const pinnedSet = new Set(Array.from(pinnedSymbols));
+    // First, separate pinned and unpinned items
+    const pinnedItems = data.filter(item => pinnedSymbols.has(item.symbol));
+    const unpinnedItems = data.filter(item => !pinnedSymbols.has(item.symbol));
     
-    // Сначала применяем базовую сортировку по столбцам
-    let sorted = [...data];
+    // Sort only unpinned items if sorting is active
     if (sorting.length > 0) {
       const { id, desc } = sorting[0];
-      sorted.sort((a, b) => {
-        const aValue = a[id as keyof CombinedFundingData];
-        const bValue = b[id as keyof CombinedFundingData];
+      
+      unpinnedItems.sort((a, b) => {
+        let aVal, bVal;
         
-        if (aValue === undefined && bValue === undefined) return 0;
-        if (aValue === undefined) return desc ? -1 : 1;
-        if (bValue === undefined) return desc ? 1 : -1;
+        // Handle different column types
+        switch (id) {
+          case 'symbol':
+            aVal = a.symbol;
+            bVal = b.symbol;
+            break;
+          
+          case 'hyperliquidFR':
+            aVal = typeof a.rates.hyperliquid === 'number' ? a.rates.hyperliquid : null;
+            bVal = typeof b.rates.hyperliquid === 'number' ? b.rates.hyperliquid : null;
+            break;
+            
+          case 'binanceFR':
+            aVal = typeof a.rates.binance === 'number' ? a.rates.binance : null;
+            bVal = typeof b.rates.binance === 'number' ? b.rates.binance : null;
+            break;
+            
+          case 'bybitFR':
+            aVal = typeof a.rates.bybit === 'number' ? a.rates.bybit : null;
+            bVal = typeof b.rates.bybit === 'number' ? b.rates.bybit : null;
+            break;
+            
+          case 'spread':
+            aVal = a.rates.spreadData?.average ?? null;
+            bVal = b.rates.spreadData?.average ?? null;
+            break;
+            
+          case 'binanceSpread':
+            aVal = a.rates.binanceSpreadData?.average ?? null;
+            bVal = b.rates.binanceSpreadData?.average ?? null;
+            break;
+            
+          case 'bybitSpread':
+            aVal = a.rates.bybitSpreadData?.average ?? null;
+            bVal = b.rates.bybitSpreadData?.average ?? null;
+            break;
+            
+          default:
+            aVal = a[id];
+            bVal = b[id];
+        }
         
-        return desc 
-          ? (aValue < bValue ? 1 : aValue > bValue ? -1 : 0)
-          : (aValue < bValue ? -1 : aValue > bValue ? 1 : 0);
+        // Handle null/undefined values
+        if (aVal === null || aVal === undefined) return 1;
+        if (bVal === null || bVal === undefined) return -1;
+        if (aVal === bVal) return 0;
+        
+        // For funding rates and spreads, compare as numbers
+        if (id.includes('FR') || id.includes('Spread')) {
+          return (Number(aVal) - Number(bVal)) * (desc ? -1 : 1);
+        }
+        
+        // For other values, use standard comparison
+        return (aVal < bVal ? -1 : 1) * (desc ? -1 : 1);
       });
     }
-
-    // Затем разделяем на закрепленные и незакрепленные
-    const pinnedItems = sorted.filter(item => pinnedSet.has(item.symbol));
-    const unpinnedItems = sorted.filter(item => !pinnedSet.has(item.symbol));
-
-    // Возвращаем объединенный массив
+    
+    // Combine pinned and sorted unpinned items
     return [...pinnedItems, ...unpinnedItems];
-  }, [data, pinnedSymbols, sorting]);
+  }, [data, sorting, pinnedSymbols]);
 
   const columns = useMemo<ColumnDef<CombinedFundingData>[]>(() => [
     {
       id: 'pin',
-      size: 40,
-      header: () => null,
+      enableSorting: false,
       cell: ({ row }) => {
-        const pinnedSet = new Set(Array.from(pinnedSymbols));
+        const symbol = row.original.symbol;
+        const isPinned = pinnedSymbols.has(symbol);
         return (
           <Button
             variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => togglePinned(row.getValue('symbol'))}
+            onClick={() => handlePinToggle(symbol)}
+            className="h-8 w-8 p-0"
           >
-            <Pin 
-              className={`h-4 w-4 ${pinnedSet.has(row.getValue('symbol')) ? 'fill-current' : ''}`}
-            />
+            <Pin className={`h-4 w-4 ${isPinned ? 'fill-current' : ''}`} />
           </Button>
         );
       },
@@ -123,71 +198,177 @@ export function FundingTable({ data, onOrderPlacement, progress }: FundingTableP
       accessorKey: 'symbol',
       header: ({ column }) => {
         return (
-          <div className="flex items-center space-x-2 cursor-pointer" 
-               onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
-            <span>Coin</span>
-            {{
-              asc: <ChevronUp className="w-4 h-4" />,
-              desc: <ChevronDown className="w-4 h-4" />,
-              false: <ChevronsUpDown className="w-4 h-4" />,
-            }[column.getIsSorted() as string ?? 'false']}
-          </div>
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          >
+            Symbol
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
         );
       },
     },
     {
-      accessorKey: 'hyperliquid',
+      id: 'hyperliquidFR',
+      accessorFn: (row) => row.rates.hyperliquid,
       header: ({ column }) => {
         return (
-          <div className="flex items-center space-x-2 cursor-pointer whitespace-nowrap"
-               onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
-            <span className="hidden sm:inline">Hyperliquid</span>
-            <span className="sm:hidden">HL</span>
-            {{
-              asc: <ChevronUp className="w-4 h-4" />,
-              desc: <ChevronDown className="w-4 h-4" />,
-              false: <ChevronsUpDown className="w-4 h-4" />,
-            }[column.getIsSorted() as string ?? 'false']}
-          </div>
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          >
+            Hyper FR
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
         );
       },
-      cell: ({ row }) => formatRate(row.getValue('hyperliquid')),
+      cell: ({ row }) => formatRate(row.original.rates.hyperliquid),
     },
     {
-      accessorKey: 'binance',
+      id: 'binanceFR',
+      accessorFn: (row) => row.rates.binance,
       header: ({ column }) => {
         return (
-          <div className="flex items-center space-x-2 cursor-pointer whitespace-nowrap"
-               onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
-            <span className="hidden sm:inline">Binance</span>
-            <span className="sm:hidden">BN</span>
-            {{
-              asc: <ChevronUp className="w-4 h-4" />,
-              desc: <ChevronDown className="w-4 h-4" />,
-              false: <ChevronsUpDown className="w-4 h-4" />,
-            }[column.getIsSorted() as string ?? 'false']}
-          </div>
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          >
+            Binance FR
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
         );
       },
-      cell: ({ row }) => formatRate(row.getValue('binance')),
+      cell: ({ row }) => formatRate(row.original.rates.binance),
     },
     {
-      accessorKey: 'bybit',
+      id: 'bybitFR',
+      accessorFn: (row) => row.rates.bybit,
       header: ({ column }) => {
         return (
-          <div className="flex items-center space-x-2 cursor-pointer whitespace-nowrap"
-               onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
-            <span className="hidden sm:inline">Bybit</span>
-            <span className="sm:hidden">BB</span>
-            {{
-              asc: <ChevronUp className="w-4 h-4" />,
-              desc: <ChevronDown className="w-4 h-4" />,
-              false: <ChevronsUpDown className="w-4 h-4" />,
-            }[column.getIsSorted() as string ?? 'false']}
-          </div>
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          >
+            Bybit FR
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
         );
       },
-      cell: ({ row }) => formatRate(row.getValue('bybit')),
+      cell: ({ row }) => formatRate(row.original.rates.bybit),
+    },
+    {
+      id: 'spread',
+      accessorFn: (row) => row.rates.spreadData?.average ?? null,
+      header: ({ column }) => {
+        return (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          >
+            Mark-Oracle Hyper
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
+        );
+      },
+      cell: ({ row }) => {
+        const spreadData = row.original.rates.spreadData;
+        if (!spreadData) return 'N/A';
+
+        const { current, average, samplesCount, isComplete } = spreadData;
+
+        if (!isComplete) {
+          return (
+            <div className="flex items-center space-x-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="text-xs text-muted-foreground">
+                ({samplesCount}/12)
+              </span>
+            </div>
+          );
+        }
+
+        return (
+          <span>
+            {average !== null ? formatSpread(average, isComplete) : 'N/A'}
+          </span>
+        );
+      },
+    },
+    {
+      id: 'binanceSpread',
+      accessorFn: (row) => row.rates.binanceSpreadData?.average ?? null,
+      header: ({ column }) => {
+        return (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          >
+            Mark-Oracle Binance
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
+        );
+      },
+      cell: ({ row }) => {
+        const spreadData = row.original.rates.binanceSpreadData;
+        if (!spreadData) return 'N/A';
+
+        const { average, samplesCount, isComplete } = spreadData;
+
+        if (!isComplete) {
+          return (
+            <div className="flex items-center space-x-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="text-xs text-muted-foreground">
+                ({samplesCount}/12)
+              </span>
+            </div>
+          );
+        }
+
+        return (
+          <span>
+            {average !== null ? formatSpread(average, isComplete) : 'N/A'}
+          </span>
+        );
+      },
+    },
+    {
+      id: 'bybitSpread',
+      accessorFn: (row) => row.rates.bybitSpreadData?.average ?? null,
+      header: ({ column }) => {
+        return (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          >
+            Mark-Oracle Bybit
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
+        );
+      },
+      cell: ({ row }) => {
+        const spreadData = row.original.rates.bybitSpreadData;
+        if (!spreadData) return 'N/A';
+
+        const { average, samplesCount, isComplete } = spreadData;
+
+        if (!isComplete) {
+          return (
+            <div className="flex items-center space-x-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="text-xs text-muted-foreground">
+                ({samplesCount}/12)
+              </span>
+            </div>
+          );
+        }
+
+        return (
+          <span>
+            {average !== null ? formatSpread(average, isComplete) : 'N/A'}
+          </span>
+        );
+      },
     },
   ], [pinnedSymbols]);
 
@@ -202,12 +383,16 @@ export function FundingTable({ data, onOrderPlacement, progress }: FundingTableP
         pageIndex,
       },
     },
+    globalFilterFn: (row, columnId, filterValue) => {
+      const value = row.getValue(columnId);
+      return value?.toString().toLowerCase().includes(filterValue.toLowerCase());
+    },
     onSortingChange: setSorting,
     onGlobalFilterChange: setGlobalFilter,
     getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getCoreRowModel(), // Заменяем на CoreRowModel, так как мы делаем сортировку вручную
-    getFilteredRowModel: getFilteredRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
+    enableSorting: false, // Отключаем встроенную сортировку полностью
+    manualSorting: true,
+    sortDescFirst: true,
     onPaginationChange: (updater) => {
       if (typeof updater === 'function') {
         const newState = updater(table.getState().pagination);
@@ -234,156 +419,138 @@ export function FundingTable({ data, onOrderPlacement, progress }: FundingTableP
 
   return (
     <div className="space-y-4">
-      <div className="space-y-2 px-2 sm:px-0">
-        <div className="flex items-center justify-between">
-          <p className="text-xs sm:text-sm text-muted-foreground">
-            Funding rates update every 30 seconds
-          </p>
+      <div className="flex items-center space-x-4 mb-4">
+        <div className="flex-1">
+          <Input
+            placeholder="Filter coins..."
+            value={globalFilter ?? ''}
+            onChange={(event) => setGlobalFilter(event.target.value)}
+            className="max-w-sm"
+          />
         </div>
-        <Progress value={progress} className="h-1.5 sm:h-2" />
-      </div>
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 px-2 sm:px-0">
-        <Input
-          placeholder="Filter coins..."
-          value={globalFilter ?? ''}
-          onChange={(e) => setGlobalFilter(e.target.value)}
-          className="max-w-sm text-xs sm:text-sm h-8 sm:h-10"
-        />
-        <div className="flex items-center space-x-2">
-          <span className="text-xs sm:text-sm text-muted-foreground whitespace-nowrap">Rows per page:</span>
-          <Select
-            value={pageSize.toString()}
-            onValueChange={(value) => setPageSize(Number(value))}
-          >
-            <SelectTrigger className="w-[60px] sm:w-[70px] h-8 sm:h-10 text-xs sm:text-sm">
-              <SelectValue>{pageSize}</SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="10" className="text-xs sm:text-sm">10</SelectItem>
-              <SelectItem value="25" className="text-xs sm:text-sm">25</SelectItem>
-              <SelectItem value="50" className="text-xs sm:text-sm">50</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="flex flex-col items-end space-y-1 flex-1">
+          <p className="text-xs sm:text-sm text-muted-foreground">
+            Spread updates every 15 seconds
+          </p>
+          <div className="flex items-center space-x-2 w-full">
+            <Progress value={progress} />
+          </div>
         </div>
       </div>
       <div className="rounded-md border overflow-x-auto">
         <Table>
           <TableHeader>
-            <TableRow>
-              {table.getFlatHeaders().map((header) => (
-                <TableHead key={header.id} className="whitespace-nowrap text-xs sm:text-sm p-2 sm:p-4">
-                  {flexRender(
-                    header.column.columnDef.header,
-                    header.getContext()
-                  )}
-                </TableHead>
-              ))}
-            </TableRow>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <TableHead key={header.id}>
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(
+                          header.column.columnDef.header,
+                          header.getContext()
+                        )}
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
           </TableHeader>
           <TableBody>
-            {table.getRowModel().rows.map((row) => (
-              <React.Fragment key={row.id}>
-                <TableRow>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell
-                      key={cell.id}
-                      className={`${
-                        cell.column.id !== 'symbol' && cell.column.id !== 'pin' 
-                          ? "cursor-pointer hover:bg-muted whitespace-nowrap" 
-                          : "whitespace-nowrap"
-                      } text-xs sm:text-sm p-2 sm:p-4`}
-                      onClick={() => {
-                        if (cell.column.id !== 'symbol' && cell.column.id !== 'pin') {
-                          handleExchangeSelect(row.getValue('symbol'), cell.column.id);
-                        }
-                      }}
-                    >
-                      <div className={
-                        cell.column.id !== 'symbol' && cell.column.id !== 'pin' && 
-                        selectedExchanges[row.getValue('symbol')]?.includes(cell.column.id)
-                          ? 'font-bold'
-                          : ''
-                      }>
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </div>
-                    </TableCell>
-                  ))}
-                </TableRow>
-                {selectedExchanges[row.getValue('symbol')]?.length === 2 && (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center bg-muted/50 p-2 sm:p-4">
-                      <Button
-                        onClick={() => onOrderPlacement(
-                          row.getValue('symbol'),
-                          selectedExchanges[row.getValue('symbol')]
+            {table.getRowModel().rows?.length ? (
+              table.getRowModel().rows.map((row) => (
+                <React.Fragment key={row.id}>
+                  <TableRow
+                    key={row.id}
+                    data-state={row.getIsSelected() && "selected"}
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <TableCell key={cell.id}>
+                        {flexRender(
+                          cell.column.columnDef.cell,
+                          cell.getContext()
                         )}
-                        variant="outline"
-                        className="my-1 sm:my-2 text-xs sm:text-sm"
-                      >
-                        Order Placement
-                      </Button>
-                    </TableCell>
+                      </TableCell>
+                    ))}
                   </TableRow>
-                )}
-              </React.Fragment>
-            ))}
+                  {selectedExchanges[row.getValue('symbol')]?.length === 2 && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center bg-muted/50 p-2 sm:p-4">
+                        <Button
+                          onClick={() => onOrderPlacement(
+                            row.getValue('symbol'),
+                            selectedExchanges[row.getValue('symbol')]
+                          )}
+                          variant="outline"
+                          className="my-1 sm:my-2 text-xs sm:text-sm"
+                        >
+                          Order Placement
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </React.Fragment>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell
+                  colSpan={columns.length}
+                  className="h-24 text-center"
+                >
+                  No results.
+                </TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       </div>
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-2 sm:px-0">
-        <div className="flex-1 text-xs sm:text-sm text-muted-foreground">
-          {table.getFilteredRowModel().rows.length} coin{table.getFilteredRowModel().rows.length === 1 ? '' : 's'} total
-        </div>
-        <div className="flex items-center space-x-4 sm:space-x-6 lg:space-x-8">
-          <div className="flex w-[80px] sm:w-[100px] items-center justify-center text-xs sm:text-sm font-medium">
+      <div className="flex items-center justify-between py-4">
+        <div className="flex items-center space-x-2">
+          <p className="text-sm text-muted-foreground">
             Page {table.getState().pagination.pageIndex + 1} of{' '}
             {table.getPageCount()}
-          </div>
+          </p>
           <div className="flex items-center space-x-2">
-            <Pagination>
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious 
-                    onClick={() => table.previousPage()}
-                    className={`${!table.getCanPreviousPage() ? "pointer-events-none opacity-50" : "cursor-pointer"} text-xs sm:text-sm h-8 sm:h-10`}
-                  />
-                </PaginationItem>
-                {[...Array(table.getPageCount())].map((_, idx) => {
-                  if (idx === pageIndex) {
-                    return (
-                      <PaginationItem key={idx} className="hidden sm:inline-block">
-                        <PaginationLink isActive className="text-xs sm:text-sm h-8 sm:h-10">{idx + 1}</PaginationLink>
-                      </PaginationItem>
-                    );
-                  }
-                  if (
-                    idx === 0 ||
-                    idx === table.getPageCount() - 1 ||
-                    (idx >= pageIndex - 1 && idx <= pageIndex + 1)
-                  ) {
-                    return (
-                      <PaginationItem key={idx} className="hidden sm:inline-block">
-                        <PaginationLink onClick={() => setPageIndex(idx)} className="text-xs sm:text-sm h-8 sm:h-10">
-                          {idx + 1}
-                        </PaginationLink>
-                      </PaginationItem>
-                    );
-                  }
-                  if (idx === pageIndex - 2 || idx === pageIndex + 2) {
-                    return <PaginationEllipsis key={idx} className="hidden sm:inline-block" />;
-                  }
-                  return null;
-                })}
-                <PaginationItem>
-                  <PaginationNext 
-                    onClick={() => table.nextPage()}
-                    className={`${!table.getCanNextPage() ? "pointer-events-none opacity-50" : "cursor-pointer"} text-xs sm:text-sm h-8 sm:h-10`}
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.previousPage()}
+              disabled={!table.getCanPreviousPage()}
+            >
+              Previous
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.nextPage()}
+              disabled={!table.getCanNextPage()}
+            >
+              Next
+            </Button>
           </div>
         </div>
+        <div className="flex items-center space-x-2">
+          <span className="text-sm text-muted-foreground">Rows per page:</span>
+          <Select
+            value={pageSize.toString()}
+            onValueChange={(value) => setPageSize(Number(value))}
+          >
+            <SelectTrigger className="h-8 w-[70px]">
+              <SelectValue placeholder={pageSize} />
+            </SelectTrigger>
+            <SelectContent side="top">
+              {[10, 25, 50, 100].map((size) => (
+                <SelectItem key={size} value={size.toString()}>
+                  {size}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div className="flex items-center justify-end py-2">
+        <p className="text-sm text-muted-foreground">
+          {table.getFilteredRowModel().rows.length} coin{table.getFilteredRowModel().rows.length === 1 ? '' : 's'} total
+        </p>
       </div>
     </div>
   );

@@ -1,76 +1,96 @@
 import axios from 'axios';
-import { BaseExchangeAPI } from './base';
 import { FundingRate } from '../types';
 
-interface HyperliquidMetaResponse {
-  universe: Array<{
-    name: string;
-    szabo: string;
-  }>;
+interface HyperliquidCoin {
+  name: string;
+  szDecimals: number;
+  maxLeverage: number;
+  onlyIsolated?: boolean;
 }
 
-export class HyperliquidAPI extends BaseExchangeAPI {
+interface HyperliquidFunding {
+  dayNtlVlm: string;
+  funding: string;
+  impactPxs: string[];
+  markPx: string;
+  midPx: string;
+  openInterest: string;
+  oraclePx: string;
+  premium: string;
+  prevDayPx: string;
+}
+
+interface HyperliquidResponse {
+  type: string;
+  data: [
+    {
+      universe: HyperliquidCoin[];
+    },
+    HyperliquidFunding[]
+  ];
+}
+
+export interface ExtendedFundingRate extends FundingRate {
+  dayNtlVlm: number;
+  markPx: number;
+  openInterest: number;
+  oraclePx: number;
+  premium: number;
+  prevDayPx: number;
+  impactPxs: [number | null, number | null];
+}
+
+export class HyperliquidAPI {
   protected exchangeName = 'Hyperliquid';
   private readonly baseUrl = 'https://api.hyperliquid.xyz';
 
-  private coinMap: { [key: string]: string } = {
-    '1': 'BTC',
-    '10': 'ETH',
-    '11': 'SOL',
-    '12': 'XRP',
-    '13': 'BNB',
-    // Добавим остальные маппинги по мере необходимости
-  };
-
-  async getFundingRates(): Promise<FundingRate[]> {
+  async getFundingRates(): Promise<ExtendedFundingRate[]> {
     try {
-      console.log('Fetching Hyperliquid funding rates...');
-      
-      // Сначала получаем мета-информацию для маппинга ID -> символы
-      const metaResponse = await axios.post<HyperliquidMetaResponse>(`${this.baseUrl}/info`, {
-        type: "meta"
+      const response = await axios.post<HyperliquidResponse>(`${this.baseUrl}/info`, {
+        type: "metaAndAssetCtxs"
       });
       
-      console.log('Hyperliquid meta response:', metaResponse.data);
-
-      // Обновляем маппинг из мета-данных
-      if (metaResponse.data?.universe) {
-        metaResponse.data.universe.forEach((asset, index) => {
-          this.coinMap[(index + 1).toString()] = asset.name;
-        });
-      }
-
-      // Получаем текущие фандинг рейты
-      const response = await axios.post(`${this.baseUrl}/info`, {
-        type: "allMids"
-      });
+      const fundingRates: ExtendedFundingRate[] = [];
       
-      console.log('Hyperliquid funding response:', response.data);
+      if (Array.isArray(response.data)) {
+        const universe = response.data[0]?.universe;
+        const fundingInfo = response.data[1];
 
-      const fundingRates: FundingRate[] = [];
-      
-      // Обрабатываем ответ как объект
-      for (const [key, value] of Object.entries(response.data)) {
-        const coinSymbol = this.coinMap[key.replace('@', '')];
-        if (coinSymbol) {
-          fundingRates.push({
-            symbol: coinSymbol + 'USDT',
-            rate: parseFloat(value as string),
-            timestamp: Date.now(),
+        if (universe && fundingInfo) {
+          universe.forEach((coin, index) => {
+            const data = fundingInfo[index];
+            
+            if (data?.funding !== undefined) {
+              const impactPxs = Array.isArray(data.impactPxs) ? [
+                data.impactPxs[0] ? Number(data.impactPxs[0]) : null,
+                data.impactPxs[1] ? Number(data.impactPxs[1]) : null
+              ] : [null, null];
+
+              fundingRates.push({
+                symbol: coin.name,
+                rate: Number(parseFloat(data.funding).toFixed(6)),
+                timestamp: Date.now(),
+                dayNtlVlm: Number(data.dayNtlVlm || 0),
+                markPx: Number(data.markPx || 0),
+                openInterest: Number(data.openInterest || 0),
+                oraclePx: Number(data.oraclePx || 0),
+                premium: Number(data.premium || 0),
+                prevDayPx: Number(data.prevDayPx || 0),
+                impactPxs
+              });
+            }
           });
         }
       }
 
-      console.log('Processed funding rates:', fundingRates);
       return fundingRates;
 
     } catch (error) {
       console.error('Hyperliquid API error:', error);
       if (axios.isAxiosError(error)) {
-        console.error('Response data:', error.response?.data);
-        console.error('Response status:', error.response?.status);
+        console.error('Error details:', error.response?.data);
       }
-      return this.handleError(error);
+      throw error;
     }
   }
 }
