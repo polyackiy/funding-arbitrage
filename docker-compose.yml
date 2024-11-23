@@ -1,7 +1,9 @@
 version: '3.8'
 services:
   app:
-    build: .
+    build: 
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "3000:3000"
     environment:
@@ -21,7 +23,9 @@ services:
     restart: always
 
   spreads-worker:
-    build: .
+    build: 
+      context: .
+      dockerfile: Dockerfile.worker
     command: npm run worker:spreads
     environment:
       - DATABASE_URL=${DATABASE_URL}
@@ -30,7 +34,9 @@ services:
     restart: always
 
   cleanup-worker:
-    build: .
+    build: 
+      context: .
+      dockerfile: Dockerfile.worker
     command: npm run worker:cleanup
     environment:
       - DATABASE_URL=${DATABASE_URL}

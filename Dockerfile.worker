@@ -1,0 +1,20 @@
+# Базовый образ
+FROM node:18-alpine
+
+# Рабочая директория
+WORKDIR /app
+
+# Копируем файлы package.json
+COPY package*.json ./
+
+# Устанавливаем зависимости
+RUN npm install
+
+# Копируем только необходимые файлы
+COPY tsconfig.json ./
+COPY prisma ./prisma
+COPY scripts ./scripts
+COPY lib ./lib
+
+# Генерируем Prisma клиент
+RUN npx prisma generate
