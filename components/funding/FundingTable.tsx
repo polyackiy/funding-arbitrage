@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -25,7 +26,6 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination"
-import { Progress } from "@/components/ui/progress";
 import { CombinedFundingData } from '@/lib/api/types';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import {
@@ -44,15 +44,13 @@ import { DataTableColumnHeader } from "@/components/ui/table";
 interface FundingTableProps {
   data: CombinedFundingData[];
   onOrderPlacement: (symbol: string, exchanges: string[]) => void;
-  progress: number;
   isPaused: boolean;
   setIsPaused: (paused: boolean) => void;
 }
 
 export function FundingTable({ 
   data, 
-  onOrderPlacement, 
-  progress, 
+  onOrderPlacement,
   isPaused, 
   setIsPaused 
 }: FundingTableProps) {
@@ -61,6 +59,7 @@ export function FundingTable({
   const [globalFilter, setGlobalFilter] = useState('');
   const [pageSize, setPageSize] = useState(25);
   const [pageIndex, setPageIndex] = useState(0);
+  const [hideTrash, setHideTrash] = useState(true);
   const [pinnedSymbols, setPinnedSymbols] = useLocalStorage<Set<string>>("pinnedSymbols", new Set());
 
   const formatRate = (rate: number | null) => {
@@ -77,18 +76,8 @@ export function FundingTable({
     return ((sellPrice - buyPrice) / sellPrice) * 10000;
   };
 
-  const formatSpread = (spread: number | null, isComplete: boolean | undefined) => {
+  const formatSpread = (spread: number | null) => {
     if (spread === null) return 'N/A';
-    if (!isComplete) {
-      return (
-        <div className="flex items-center space-x-2">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          <span className="text-xs text-muted-foreground">
-            (loading)
-          </span>
-        </div>
-      );
-    }
     return Math.round(spread).toString();
   };
 
@@ -104,9 +93,48 @@ export function FundingTable({
 
   // Sort data before passing it to the table
   const sortedData = useMemo(() => {
-    // First, separate pinned and unpinned items
-    const pinnedItems = data.filter(item => pinnedSymbols.has(item.symbol));
-    const unpinnedItems = data.filter(item => !pinnedSymbols.has(item.symbol));
+    // Create a Map to store the original order of pinned items
+    const pinnedOrder = new Map([...pinnedSymbols].map((symbol, index) => [symbol, index]));
+    
+    // Apply filter first
+    let filteredData = globalFilter
+      ? data.filter(item => 
+          item.symbol.toLowerCase().includes(globalFilter.toLowerCase())
+        )
+      : data;
+
+    // Apply hideTrash filter if enabled
+    if (hideTrash) {
+      filteredData = filteredData.filter(item => {
+        // Check if any rate or spread is null/undefined/NaN
+        const rates = [
+          item.rates.hyperliquid,
+          item.rates.binance,
+          item.rates.bybit
+        ];
+        const spreads = [
+          item.rates.spreadData?.average,
+          item.rates.binanceSpreadData?.average,
+          item.rates.bybitSpreadData?.average
+        ];
+        
+        // Return true only if all values are valid numbers
+        return rates.every(rate => rate !== null && rate !== undefined && !isNaN(rate)) &&
+               spreads.every(spread => spread !== null && spread !== undefined && !isNaN(spread));
+      });
+    }
+    
+    // Then separate pinned and unpinned items
+    const pinnedItems = filteredData
+      .filter(item => pinnedSymbols.has(item.symbol))
+      // Sort pinned items by their original order
+      .sort((a, b) => {
+        const orderA = pinnedOrder.get(a.symbol) ?? 0;
+        const orderB = pinnedOrder.get(b.symbol) ?? 0;
+        return orderA - orderB;
+      });
+      
+    const unpinnedItems = filteredData.filter(item => !pinnedSymbols.has(item.symbol));
     
     // Sort only unpinned items if sorting is active
     if (sorting.length > 0) {
@@ -152,6 +180,20 @@ export function FundingTable({
             bVal = b.rates.bybitSpreadData?.average ?? null;
             break;
             
+          case 'hyperOI':
+            const aOI = a.rates.openInterest;
+            const aPrice = a.rates.oraclePx;
+            const bOI = b.rates.openInterest;
+            const bPrice = b.rates.oraclePx;
+            
+            aVal = (aOI !== null && aOI !== undefined && aPrice !== null && aPrice !== undefined) 
+              ? aOI * aPrice 
+              : null;
+            bVal = (bOI !== null && bOI !== undefined && bPrice !== null && bPrice !== undefined) 
+              ? bOI * bPrice 
+              : null;
+            break;
+            
           default:
             aVal = a[id];
             bVal = b[id];
@@ -163,7 +205,7 @@ export function FundingTable({
         if (aVal === bVal) return 0;
         
         // For funding rates and spreads, compare as numbers
-        if (id.includes('FR') || id.includes('Spread')) {
+        if (id.includes('FR') || id.includes('Spread') || id.includes('OI')) {
           return (Number(aVal) - Number(bVal)) * (desc ? -1 : 1);
         }
         
@@ -174,7 +216,7 @@ export function FundingTable({
     
     // Combine pinned and sorted unpinned items
     return [...pinnedItems, ...unpinnedItems];
-  }, [data, sorting, pinnedSymbols]);
+  }, [data, sorting, pinnedSymbols, globalFilter, hideTrash]);
 
   const columns = useMemo<ColumnDef<CombinedFundingData>[]>(() => [
     {
@@ -207,6 +249,34 @@ export function FundingTable({
             <ArrowUpDown className="ml-2 h-4 w-4" />
           </Button>
         );
+      },
+    },
+    {
+      id: 'hyperOI',
+      accessorFn: (row) => {
+        const oi = row.rates.openInterest;
+        const price = row.rates.oraclePx;
+        if (oi === null || oi === undefined || price === null || price === undefined) return null;
+        return oi * price;
+      },
+      header: ({ column }) => {
+        return (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+            className="p-0 font-medium"
+          >
+            Hyper OI
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
+        );
+      },
+      cell: ({ row }) => {
+        const oi = row.original.rates.openInterest;
+        const price = row.original.rates.oraclePx;
+        if (oi === null || oi === undefined || price === null || price === undefined) return 'N/A';
+        const value = oi * price;
+        return `$${Math.round(value).toLocaleString()}`;
       },
     },
     {
@@ -275,10 +345,7 @@ export function FundingTable({
           </Button>
         );
       },
-      cell: ({ row }) => {
-        const spreadData = row.original.rates.spreadData;
-        return formatSpread(spreadData?.average, spreadData?.isComplete);
-      },
+      cell: ({ row }) => formatSpread(row.original.rates.spreadData?.average),
     },
     {
       id: 'binanceSpread',
@@ -295,10 +362,7 @@ export function FundingTable({
           </Button>
         );
       },
-      cell: ({ row }) => {
-        const spreadData = row.original.rates.binanceSpreadData;
-        return formatSpread(spreadData?.average, spreadData?.isComplete);
-      },
+      cell: ({ row }) => formatSpread(row.original.rates.binanceSpreadData?.average),
     },
     {
       id: 'bybitSpread',
@@ -315,10 +379,7 @@ export function FundingTable({
           </Button>
         );
       },
-      cell: ({ row }) => {
-        const spreadData = row.original.rates.bybitSpreadData;
-        return formatSpread(spreadData?.average, spreadData?.isComplete);
-      },
+      cell: ({ row }) => formatSpread(row.original.rates.bybitSpreadData?.average),
     },
   ], [pinnedSymbols]);
 
@@ -369,21 +430,26 @@ export function FundingTable({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center space-x-4 mb-4">
-        <div className="flex-1">
+      <div className="flex items-center justify-between py-4">
+        <div className="flex items-center space-x-4">
           <Input
-            placeholder="Filter coins..."
-            value={globalFilter ?? ''}
+            placeholder="Filter symbols..."
+            value={globalFilter ?? ""}
             onChange={(event) => setGlobalFilter(event.target.value)}
             className="max-w-sm"
           />
-        </div>
-        <div className="flex flex-col items-end space-y-1 flex-1">
-          <p className="text-xs sm:text-sm text-muted-foreground">
-            Spread updates every 15 seconds
-          </p>
-          <div className="flex items-center space-x-2 w-full">
-            <Progress value={progress} />
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="hideTrash"
+              checked={hideTrash}
+              onCheckedChange={(checked) => setHideTrash(checked as boolean)}
+            />
+            <label
+              htmlFor="hideTrash"
+              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+            >
+              Hide trash
+            </label>
           </div>
         </div>
       </div>
@@ -424,7 +490,7 @@ export function FundingTable({
                   </TableRow>
                   {selectedExchanges[row.getValue('symbol')]?.length === 2 && (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center bg-muted/50 p-2 sm:p-4">
+                      <TableCell colSpan={6} className="text-center bg-muted/50 p-2 sm:p-4">
                         <Button
                           onClick={() => onOrderPlacement(
                             row.getValue('symbol'),

@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 
 export default function FundingComparison() {
   const router = useRouter();
-  const { data, loading, error, progress, isPaused, setIsPaused } = useFundingData();
+  const { data, loading, error, isPaused, setIsPaused } = useFundingData();
   
   if (loading) {
     return (
@@ -38,7 +38,6 @@ export default function FundingComparison() {
       <FundingTable 
         data={data} 
         onOrderPlacement={handleOrderPlacement} 
-        progress={progress}
         isPaused={isPaused}
         setIsPaused={setIsPaused}
       />

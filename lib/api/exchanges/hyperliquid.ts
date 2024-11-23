@@ -20,14 +20,14 @@ interface HyperliquidFunding {
   prevDayPx: string;
 }
 
+interface HyperliquidMeta {
+  universe: HyperliquidCoin[];
+}
+
 interface HyperliquidResponse {
-  type: string;
-  data: [
-    {
-      universe: HyperliquidCoin[];
-    },
-    HyperliquidFunding[]
-  ];
+  0: HyperliquidMeta;
+  1: HyperliquidFunding[];
+  length: number;
 }
 
 export interface ExtendedFundingRate extends FundingRate {
@@ -40,6 +40,13 @@ export interface ExtendedFundingRate extends FundingRate {
   impactPxs: [number | null, number | null];
 }
 
+export interface SpreadData {
+  symbol: string;
+  markPrice: number;
+  oraclePrice: number;
+  spread: number;
+}
+
 export class HyperliquidAPI {
   protected exchangeName = 'Hyperliquid';
   private readonly baseUrl = 'https://api.hyperliquid.xyz';
@@ -49,48 +56,118 @@ export class HyperliquidAPI {
       const response = await axios.post<HyperliquidResponse>(`${this.baseUrl}/info`, {
         type: "metaAndAssetCtxs"
       });
-      
-      const fundingRates: ExtendedFundingRate[] = [];
-      
-      if (Array.isArray(response.data)) {
-        const universe = response.data[0]?.universe;
-        const fundingInfo = response.data[1];
 
-        if (universe && fundingInfo) {
-          universe.forEach((coin, index) => {
-            const data = fundingInfo[index];
-            
-            if (data?.funding !== undefined) {
-              const impactPxs = Array.isArray(data.impactPxs) ? [
-                data.impactPxs[0] ? Number(data.impactPxs[0]) : null,
-                data.impactPxs[1] ? Number(data.impactPxs[1]) : null
-              ] : [null, null];
-
-              fundingRates.push({
-                symbol: coin.name,
-                rate: Number(parseFloat(data.funding).toFixed(6)),
-                timestamp: Date.now(),
-                dayNtlVlm: Number(data.dayNtlVlm || 0),
-                markPx: Number(data.markPx || 0),
-                openInterest: Number(data.openInterest || 0),
-                oraclePx: Number(data.oraclePx || 0),
-                premium: Number(data.premium || 0),
-                prevDayPx: Number(data.prevDayPx || 0),
-                impactPxs
-              });
-            }
-          });
-        }
+      if (!Array.isArray(response.data) || response.data.length !== 2) {
+        console.error('Invalid response format:', response.data);
+        return [];
       }
+
+      const [meta, fundingInfo] = response.data;
+      const universe = meta.universe;
+
+      if (!universe || !Array.isArray(fundingInfo)) {
+        console.error('Invalid data structure:', { meta, fundingInfo });
+        return [];
+      }
+
+      const fundingRates: ExtendedFundingRate[] = [];
+
+      universe.forEach((coin: HyperliquidCoin, index: number) => {
+        const data = fundingInfo[index];
+        if (!data || data.funding === undefined) {
+          return;
+        }
+
+        try {
+          const rate = Number(data.funding);
+          if (isNaN(rate)) {
+            return;
+          }
+
+          const impactPxsArray = Array.isArray(data.impactPxs) ? data.impactPxs : [];
+          const impactPxs: [number | null, number | null] = [
+            impactPxsArray[0] ? Number(impactPxsArray[0]) : null,
+            impactPxsArray[1] ? Number(impactPxsArray[1]) : null
+          ];
+
+          fundingRates.push({
+            symbol: coin.name,
+            rate: rate,
+            timestamp: Date.now(),
+            dayNtlVlm: Number(data.dayNtlVlm || 0),
+            markPx: Number(data.markPx || 0),
+            openInterest: Number(data.openInterest || 0),
+            oraclePx: Number(data.oraclePx || 0),
+            premium: Number(data.premium || 0),
+            prevDayPx: Number(data.prevDayPx || 0),
+            impactPxs
+          });
+        } catch (error) {
+          console.error(`Error processing ${coin.name}:`, error);
+        }
+      });
 
       return fundingRates;
-
     } catch (error) {
-      console.error('Hyperliquid API error:', error);
-      if (axios.isAxiosError(error)) {
-        console.error('Error details:', error.response?.data);
+      console.error('Error fetching Hyperliquid funding rates:', error);
+      return [];
+    }
+  }
+
+  async getMarkOracleSpread(): Promise<SpreadData[]> {
+    try {
+      const response = await axios.post<HyperliquidResponse>(`${this.baseUrl}/info`, {
+        type: "metaAndAssetCtxs"
+      });
+
+      if (!Array.isArray(response.data) || response.data.length !== 2) {
+        console.error('Invalid response format:', response.data);
+        return [];
       }
-      throw error;
+
+      const [meta, fundingInfo] = response.data;
+      const universe = meta.universe;
+
+      if (!universe || !Array.isArray(fundingInfo)) {
+        console.error('Invalid data structure:', { meta, fundingInfo });
+        return [];
+      }
+
+      const spreads: SpreadData[] = [];
+
+      universe.forEach((coin: HyperliquidCoin, index: number) => {
+        const data = fundingInfo[index];
+        if (!data || !data.markPx || !data.oraclePx) {
+          return;
+        }
+
+        try {
+          const markPrice = Number(data.markPx);
+          const oraclePrice = Number(data.oraclePx);
+          
+          if (isNaN(markPrice) || isNaN(oraclePrice)) {
+            return;
+          }
+
+          spreads.push({
+            symbol: coin.name,
+            markPrice,
+            oraclePrice,
+            spread: ((markPrice - oraclePrice) / oraclePrice) * 10000 // Convert to basis points
+          });
+        } catch (error) {
+          console.error(`Error processing spread for ${coin.name}:`, error);
+        }
+      });
+
+      return spreads;
+    } catch (error) {
+      console.error('Error fetching Hyperliquid spreads:', error);
+      return [];
     }
   }
 }
+
+// Create instance and export functions
+const api = new HyperliquidAPI();
+export const getHyperliquidMarkOracleSpread = () => api.getMarkOracleSpread();

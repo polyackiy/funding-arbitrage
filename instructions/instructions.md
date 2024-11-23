@@ -39,23 +39,23 @@
 # Doc
 ## 1. Hyperliquid API Documentation
 - [API Reference](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api)
-- Retrieve perpetuals asset contexts (includes mark price, current funding, open interest, etc)
+### Retrieve perpetuals asset contexts (includes mark price, current funding, open interest, etc)
 POST
  https://api.hyperliquid.xyz/info
 
-### Headers
+#### Headers
 
 | Name | Type | Description |
 | --- | --- | --- |
 | Content-Type | *String | "application/json" |
 
-### Request Body
+#### Request Body
 
 | Name | Type | Description |
 | --- | --- | --- |
 | type | *String | "metaAndAssetCtxs" |
 
-### 200: OK Successful Response
+#### 200: OK Successful Response
     [
     {
         "universe": [
@@ -128,84 +128,156 @@ POST
 ## 2. Binance API Documentation
 - [API Reference](https://developers.binance.com/docs/derivatives/usds-margined-futures/general-info)
 
-- Get Funding Rate Info
-    - API Description
-        - Query funding rate info for symbols that had FundingRateCap/ FundingRateFloor / fundingIntervalHours adjustment
+### Mark Price
+#### API Description
+Mark Price and Funding Rate
 
-    - HTTP Request
-        - GET /fapi/v1/fundingInfo
+#### HTTP Request
+GET /fapi/v1/premiumIndex
 
-    - Request Weight
-         - 0 share 500/5min/IP rate limit with GET /fapi/v1/fundingInfo
+#### Request Weight
+1
 
-    - Request Parameters
-        
+#### Request Parameters
+| Name | Type | Mandatory | Description |
+| --- | --- | --- | --- |
+| symbol | STRING | NO | |
 
-    - Response Example
-    ```
-    [
-        {
-            "symbol": "BLZUSDT",
-            "adjustedFundingRateCap": "0.02500000",
-            "adjustedFundingRateFloor": "-0.02500000",
-            "fundingIntervalHours": 8,
-            "disclaimer": false   // ingore
-        }
-    ]
-    ```
+#### Response Example
+Response:
+
+```
+{
+	"symbol": "BTCUSDT",
+	"markPrice": "11793.63104562",	// mark price
+	"indexPrice": "11781.80495970",	// index price
+	"estimatedSettlePrice": "11781.16138815", // Estimated Settle Price, only useful in the last hour before the settlement starts.
+	"lastFundingRate": "0.00038246",  // This is the Latest funding rate
+	"nextFundingTime": 1597392000000,
+	"interestRate": "0.00010000",
+	"time": 1597370495002
+}
+```
+
+OR (when symbol not sent)
+
+```
+[
+	{
+	    "symbol": "BTCUSDT",
+	    "markPrice": "11793.63104562",	// mark price
+	    "indexPrice": "11781.80495970",	// index price
+	    "estimatedSettlePrice": "11781.16138815", // Estimated Settle Price, only useful in the last hour before the settlement starts.
+	    "lastFundingRate": "0.00038246",  // This is the Latest funding rate
+	    "nextFundingTime": 1597392000000,
+	    "interestRate": "0.00010000",	
+	    "time": 1597370495002
+	}
+]
+```
+
+
        
 ## 3. Bybit API Documentation
 - [API Reference](https://bybit-exchange.github.io/docs/v5/)
 
-- Get Funding Rate History
-    - Query for historical funding rates. Each symbol has a different funding interval. For example, if the interval is 8 hours and the current time is UTC 12, then it returns the last funding rate, which settled at UTC 8.
-    
-    - To query the funding rate interval, please refer to the instruments-info endpoint.
+### Get Tickers
+Query for the latest price snapshot, best bid/ask price, and trading volume in the last 24 hours.
 
-    Covers: USDT and USDC perpetual / Inverse perpetual
+Covers: Spot / USDT perpetual / USDC contract / Inverse contract / Option
 
-    info
-    Passing only startTime returns an error.
-    Passing only endTime returns 200 records up till endTime.
-    Passing neither returns 200 records up till the current time.
+info
+If category=option, symbol or baseCoin must be passed.
 
-    - HTTP Request
-        - GET /v5/market/funding/history
+#### HTTP Request
+GET /v5/market/tickers
 
-    - Request Parameters
-        Parameter | Required | Type | Comments
-         --- | --- | --- | ---
-         category | true | string | Product type. linear, inverse
-         symbol | true | string | Symbol name, like BTCUSDT, uppercase only
-         startTime | false | integer | The start timestamp (ms)
-         endTime | false | integer | The end timestamp (ms)
-         limit | false | integer | Limit for data size per page. [1, 200]. Default: 200
+#### Request Parameters
+| Parameter | Required | Type | Comments |
+| --- | --- | --- | --- |
+| category | true | string | Product type. spot,linear,inverse,option |
+| symbol | false | string | Symbol name, like BTCUSDT, uppercase only |
+| baseCoin | false | string | Base coin, uppercase only. Apply to option only |
+| expDate | false | string | Expiry date. e.g., 25DEC22. Apply to option only |
 
-    - Response Parameters
-         Parameter | Type | Comments
-         --- | --- | ---
-         category | string | Product type
-         list | array | Object
-         \>symbol | string | Symbol name
-         \>fundingRate | string | Funding rate
-         \>fundingRateTimestamp | string | \>Funding rate timestamp (ms)
+#### Response Parameters
 
-    - Response Example
-    ```
-        {
-            "retCode": 0,
-            "retMsg": "OK",
-            "result": {
-                "category": "linear",
-                "list": [
-                    {
-                        "symbol": "ETHPERP",
-                        "fundingRate": "0.0001",
-                        "fundingRateTimestamp": "1672041600000"
-                    }
-                ]
-            },
-            "retExtInfo": {},
-            "time": 1672051897447
-        }
-    ```
+| Parameter | Type | Comments |
+| --- | --- | --- |
+| category | string | Product type |
+| list | array | Object |
+| > symbol | string | Symbol name |
+| > lastPrice | string | Last price |
+| > indexPrice | string | Index price |
+| > markPrice | string | Mark price |
+| > prevPrice24h | string | Market price 24 hours ago |
+| > price24hPcnt | string | Percentage change of market price relative to 24h |
+| > highPrice24h | string | The highest price in the last 24 hours |
+| > lowPrice24h | string | The lowest price in the last 24 hours |
+| > prevPrice1h | string | Market price an hour ago |
+| > openInterest | string | Open interest size |
+| > openInterestValue | string | Open interest value |
+| > turnover24h | string | Turnover for 24h |
+| > volume24h | string | Volume for 24h |
+| > fundingRate | string | Funding rate |
+| > nextFundingTime | string | Next funding time (ms) |
+| > predictedDeliveryPrice | string | Predicated delivery price. It has value when 30 min before delivery |
+| > basisRate | string | Basis rate |
+| > basis | string | Basis |
+| > deliveryFeeRate | string | Delivery fee rate |
+| > deliveryTime | string | Delivery timestamp (ms) |
+| > ask1Size | string | Best ask size |
+| > bid1Price | string | Best bid price |
+| > ask1Price | string | Best ask price |
+| > bid1Size | string | Best bid size |
+| > preOpenPrice | string | Estimated pre-market contract open price<br>The value is meaningless when entering continuous trading phase |
+| > preQty | string | Estimated pre-market contract open qty<br>The value is meaningless when entering continuous trading phase |
+| > curPreListingPhase | string | The current pre-market contract phase |
+
+#### Request Example
+
+```
+GET /v5/market/tickers?category=inverse&symbol=BTCUSD HTTP/1.1
+Host: api-testnet.bybit.com
+```
+
+#### Response Example
+```
+{
+    "retCode": 0,
+    "retMsg": "OK",
+    "result": {
+        "category": "inverse",
+        "list": [
+            {
+                "symbol": "BTCUSD",
+                "lastPrice": "16597.00",
+                "indexPrice": "16598.54",
+                "markPrice": "16596.00",
+                "prevPrice24h": "16464.50",
+                "price24hPcnt": "0.008047",
+                "highPrice24h": "30912.50",
+                "lowPrice24h": "15700.00",
+                "prevPrice1h": "16595.50",
+                "openInterest": "373504107",
+                "openInterestValue": "22505.67",
+                "turnover24h": "2352.94950046",
+                "volume24h": "49337318",
+                "fundingRate": "-0.001034",
+                "nextFundingTime": "1672387200000",
+                "predictedDeliveryPrice": "",
+                "basisRate": "",
+                "deliveryFeeRate": "",
+                "deliveryTime": "0",
+                "ask1Size": "1",
+                "bid1Price": "16596.00",
+                "ask1Price": "16597.50",
+                "bid1Size": "1",
+                "basis": ""
+            }
+        ]
+    },
+    "retExtInfo": {},
+    "time": 1672376496682
+}
+```

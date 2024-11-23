@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { BaseExchangeAPI } from './base';
 import { FundingRate } from '../types';
+import { SpreadData } from './hyperliquid';
 
 interface BinancePremiumIndex {
   symbol: string;
@@ -8,6 +9,16 @@ interface BinancePremiumIndex {
   indexPrice: string;
   lastFundingRate: string;
   nextFundingTime: number;
+  time: number;
+}
+
+interface BinanceMarkPrice {
+  symbol: string;
+  markPrice: string;
+  indexPrice: string;
+  lastFundingRate: string;
+  nextFundingTime: number;
+  interestRate: string;
   time: number;
 }
 
@@ -31,8 +42,36 @@ export class BinanceAPI extends BaseExchangeAPI {
     }
   }
 
+  async getMarkOracleSpread(): Promise<SpreadData[]> {
+    try {
+      const response = await axios.get<BinanceMarkPrice[]>(`${this.baseUrl}/fapi/v1/premiumIndex`);
+      
+      return response.data.map(item => {
+        const markPrice = Number(item.markPrice);
+        const oraclePrice = Number(item.indexPrice);
+        
+        return {
+          symbol: item.symbol.replace('USDT', ''),  // Convert BTCUSDT to BTC
+          markPrice,
+          oraclePrice,
+          spread: ((markPrice - oraclePrice) / oraclePrice) * 10000 // Convert to basis points
+        };
+      });
+    } catch (error) {
+      console.error('Binance API error:', error);
+      if (axios.isAxiosError(error)) {
+        console.error('Error details:', error.response?.data);
+      }
+      return [];
+    }
+  }
+
   // Helper method to convert Hyperliquid symbol to Binance symbol
   static convertSymbol(symbol: string): string {
     return `${symbol}USDT`;
   }
 }
+
+// Create instance and export functions
+const api = new BinanceAPI();
+export const getBinanceMarkOracleSpread = () => api.getMarkOracleSpread();
