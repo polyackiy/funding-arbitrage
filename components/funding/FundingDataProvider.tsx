@@ -5,7 +5,7 @@ import { BybitAPI } from '@/lib/api/exchanges/bybit';
 import { CombinedFundingData } from '@/lib/api/types';
 import axios from 'axios';
 
-const SPREAD_UPDATE_INTERVAL = 5000; // 5 seconds
+const SPREAD_UPDATE_INTERVAL = 9000; // 9 seconds
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY = 2000; // 2 seconds
 

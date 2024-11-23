@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "worker": "ts-node --project worker/tsconfig.json scripts/start-worker.ts",
+    "worker:spreads": "ts-node scripts/start-worker.ts",
+    "worker:cleanup": "bash scripts/cleanup-worker.sh",
     "check-spreads": "ts-node scripts/check-spreads.ts"
   },
   "dependencies": {
