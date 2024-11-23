@@ -4,17 +4,29 @@ FROM node:18-alpine
 # Рабочая директория
 WORKDIR /app
 
-# Копируем файлы package.json
+# Копируем package.json и package-lock.json
 COPY package*.json ./
 
-# Устанавливаем зависимости
-RUN npm install
+# Устанавливаем только production зависимости
+RUN npm ci --only=production
 
-# Копируем только необходимые файлы
+# Копируем конфигурационные файлы
 COPY tsconfig.json ./
+COPY tsconfig.worker.json ./
 COPY prisma ./prisma
-COPY scripts ./scripts
-COPY lib ./lib
 
 # Генерируем Prisma клиент
 RUN npx prisma generate
+
+# Устанавливаем dev зависимости для компиляции
+RUN npm install -D typescript @types/node ts-node tslib @types/node
+
+# Копируем исходный код
+COPY scripts ./scripts
+COPY lib ./lib
+
+# Компилируем TypeScript файлы
+RUN npx tsc --project tsconfig.worker.json
+
+# Команда по умолчанию (будет переопределена в docker-compose)
+CMD ["npm", "run", "worker:spreads"]
