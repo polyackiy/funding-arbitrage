@@ -1,11 +1,15 @@
+# syntax=docker/dockerfile:1.4
 # Build stage
 FROM node:18-alpine AS builder
 
-# Add faster Alpine mirrors and install build dependencies
-RUN echo "https://mirrors.ustc.edu.cn/alpine/v3.18/main" > /etc/apk/repositories \
-    && echo "https://mirrors.ustc.edu.cn/alpine/v3.18/community" >> /etc/apk/repositories \
-    && apk update \
-    && apk add --no-cache bash
+# Add multiple Alpine mirrors for redundancy and speed
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories && \
+    echo "https://mirrors.cloud.tencent.com/alpine/v3.18/main" >> /etc/apk/repositories && \
+    echo "https://mirrors.cloud.tencent.com/alpine/v3.18/community" >> /etc/apk/repositories && \
+    echo "https://mirrors.aliyun.com/alpine/v3.18/main" >> /etc/apk/repositories && \
+    echo "https://mirrors.aliyun.com/alpine/v3.18/community" >> /etc/apk/repositories && \
+    apk update && \
+    apk add --no-cache bash
 
 # Set working directory
 WORKDIR /app
@@ -34,11 +38,14 @@ RUN npm run build && \
 # Production stage
 FROM node:18-alpine AS runner
 
-# Add faster Alpine mirrors and install runtime dependencies
-RUN echo "https://mirrors.ustc.edu.cn/alpine/v3.18/main" > /etc/apk/repositories \
-    && echo "https://mirrors.ustc.edu.cn/alpine/v3.18/community" >> /etc/apk/repositories \
-    && apk update \
-    && apk add --no-cache bash
+# Add multiple Alpine mirrors for redundancy and speed
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories && \
+    echo "https://mirrors.cloud.tencent.com/alpine/v3.18/main" >> /etc/apk/repositories && \
+    echo "https://mirrors.cloud.tencent.com/alpine/v3.18/community" >> /etc/apk/repositories && \
+    echo "https://mirrors.aliyun.com/alpine/v3.18/main" >> /etc/apk/repositories && \
+    echo "https://mirrors.aliyun.com/alpine/v3.18/community" >> /etc/apk/repositories && \
+    apk update && \
+    apk add --no-cache bash
 
 WORKDIR /app
 
@@ -67,11 +74,14 @@ CMD ["npm", "start"]
 # Worker stage
 FROM node:18-alpine AS worker
 
-# Add faster Alpine mirrors and install runtime dependencies
-RUN echo "https://mirrors.ustc.edu.cn/alpine/v3.18/main" > /etc/apk/repositories \
-    && echo "https://mirrors.ustc.edu.cn/alpine/v3.18/community" >> /etc/apk/repositories \
-    && apk update \
-    && apk add --no-cache bash
+# Add multiple Alpine mirrors for redundancy and speed
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories && \
+    echo "https://mirrors.cloud.tencent.com/alpine/v3.18/main" >> /etc/apk/repositories && \
+    echo "https://mirrors.cloud.tencent.com/alpine/v3.18/community" >> /etc/apk/repositories && \
+    echo "https://mirrors.aliyun.com/alpine/v3.18/main" >> /etc/apk/repositories && \
+    echo "https://mirrors.aliyun.com/alpine/v3.18/community" >> /etc/apk/repositories && \
+    apk update && \
+    apk add --no-cache bash
 
 WORKDIR /app
 
