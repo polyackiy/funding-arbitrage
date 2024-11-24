@@ -30,7 +30,7 @@ RUN npm run build:worker
 # Compile TypeScript files for worker
 RUN npx tsc --project tsconfig.worker.json
 
-# Production stage
+# Production stage for Next.js app
 FROM node:18-alpine AS runner
 
 # Install runtime dependencies
@@ -62,10 +62,10 @@ ENV NODE_ENV=production
 # Expose port
 EXPOSE 3000
 
-# Start the application (will be overridden by docker-compose for workers)
+# Start the application
 CMD ["npm", "start"]
 
-# Worker
+# Worker stage (without Next.js files)
 FROM node:18-alpine AS worker
 
 # Install runtime dependencies
@@ -76,12 +76,17 @@ WORKDIR /app
 
 # Copy package files and install production dependencies
 COPY package*.json ./
-COPY --from=runner /app/dist ./dist
-COPY --from=runner /app/node_modules ./node_modules
-COPY --from=runner /app/prisma ./prisma
+RUN npm install --production
+
+# Copy only worker-related files
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder /app/prisma ./prisma
 
 # Set NODE_ENV
 ENV NODE_ENV=production
 
-# Start the worker
+# Start the worker (will be overridden by docker-compose)
 CMD ["node", "--experimental-specifier-resolution=node", "dist/scripts/start-worker.js"]
