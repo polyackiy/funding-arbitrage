@@ -185,14 +185,26 @@ docker-compose logs -f spreads-worker
 docker-compose logs -f cleanup-worker
 ```
 
-### Nginx Configuration (Optional)
+### Nginx Configuration and Domain Setup
 
-If you're using Nginx as a reverse proxy, here's a sample configuration:
+To make your application accessible from the internet with a custom domain, follow these steps:
 
+1. Install Nginx on your server:
+```bash
+sudo apt update
+sudo apt install nginx
+```
+
+2. Create an Nginx configuration file for your domain:
+```bash
+sudo nano /etc/nginx/sites-available/fund-arb
+```
+
+3. Add the following configuration (replace `your-domain.com` with your actual domain):
 ```nginx
 server {
     listen 80;
-    server_name your-domain.com;
+    server_name your-domain.com www.your-domain.com;
 
     location / {
         proxy_pass http://localhost:3000;
@@ -201,9 +213,83 @@ server {
         proxy_set_header Connection 'upgrade';
         proxy_set_header Host $host;
         proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
+
+    # Optional: Configure SSL
+    # listen 443 ssl;
+    # ssl_certificate /path/to/your/fullchain.pem;
+    # ssl_certificate_key /path/to/your/privkey.pem;
+    # ssl_protocols TLSv1.2 TLSv1.3;
+    # ssl_ciphers HIGH:!aNULL:!MD5;
 }
 ```
+
+4. Create a symbolic link to enable the site:
+```bash
+sudo ln -s /etc/nginx/sites-available/fund-arb /etc/nginx/sites-enabled/
+```
+
+5. Test Nginx configuration:
+```bash
+sudo nginx -t
+```
+
+6. If the test is successful, restart Nginx:
+```bash
+sudo systemctl restart nginx
+```
+
+### Domain Setup
+
+1. Purchase a domain from a domain registrar (e.g., Namecheap, GoDaddy, Google Domains).
+
+2. Point your domain to your server by adding these DNS records:
+   - Add an A record pointing to your server's IP address:
+     ```
+     Type: A
+     Host: @
+     Value: YOUR_SERVER_IP
+     TTL: 3600
+     ```
+   - If you want www subdomain:
+     ```
+     Type: CNAME
+     Host: www
+     Value: your-domain.com
+     TTL: 3600
+     ```
+
+3. Wait for DNS propagation (can take up to 48 hours, but usually much faster).
+
+### SSL Certificate (Optional)
+
+To enable HTTPS:
+
+1. Install Certbot:
+```bash
+sudo apt install certbot python3-certbot-nginx
+```
+
+2. Obtain SSL certificate:
+```bash
+sudo certbot --nginx -d your-domain.com -d www.your-domain.com
+```
+
+3. Certbot will automatically update your Nginx configuration. SSL certificates will auto-renew.
+
+### Firewall Configuration
+
+If you're using UFW firewall:
+
+```bash
+sudo ufw allow 'Nginx Full'
+sudo ufw enable
+```
+
+This will allow both HTTP (80) and HTTPS (443) traffic.
 
 ### Backup
 
@@ -395,14 +481,26 @@ docker-compose logs -f spreads-worker
 docker-compose logs -f cleanup-worker
 ```
 
-### Настройка Nginx (Опционально)
+### Настройка Nginx и домена
 
-Если вы используете Nginx как обратный прокси, вот пример конфигурации:
+Чтобы сделать ваше приложение доступным из интернета с пользовательским доменом, следуйте этим шагам:
 
+1. Установите Nginx на вашем сервере:
+```bash
+sudo apt update
+sudo apt install nginx
+```
+
+2. Создайте файл конфигурации Nginx для вашего домена:
+```bash
+sudo nano /etc/nginx/sites-available/fund-arb
+```
+
+3. Добавьте следующую конфигурацию (замените `your-domain.com` на ваш фактический домен):
 ```nginx
 server {
     listen 80;
-    server_name ваш-домен.com;
+    server_name your-domain.com www.your-domain.com;
 
     location / {
         proxy_pass http://localhost:3000;
@@ -411,19 +509,93 @@ server {
         proxy_set_header Connection 'upgrade';
         proxy_set_header Host $host;
         proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
+
+    # Optional: Configure SSL
+    # listen 443 ssl;
+    # ssl_certificate /path/to/your/fullchain.pem;
+    # ssl_certificate_key /path/to/your/privkey.pem;
+    # ssl_protocols TLSv1.2 TLSv1.3;
+    # ssl_ciphers HIGH:!aNULL:!MD5;
 }
 ```
 
+4. Создайте символическую ссылку для включения сайта:
+```bash
+sudo ln -s /etc/nginx/sites-available/fund-arb /etc/nginx/sites-enabled/
+```
+
+5. Тестируйте конфигурацию Nginx:
+```bash
+sudo nginx -t
+```
+
+6. Если тест успешен, перезапустите Nginx:
+```bash
+sudo systemctl restart nginx
+```
+
+### Настройка домена
+
+1. Купите домен у регистратора доменов (например, Namecheap, GoDaddy, Google Domains).
+
+2. Укажите свой домен на ваш сервер, добавив эти записи DNS:
+   - Добавьте запись A, указывающую на IP-адрес вашего сервера:
+     ```
+     Type: A
+     Host: @
+     Value: YOUR_SERVER_IP
+     TTL: 3600
+     ```
+   - Если вы хотите поддомен www:
+     ```
+     Type: CNAME
+     Host: www
+     Value: your-domain.com
+     TTL: 3600
+     ```
+
+3. Подождите распространения DNS (может занять до 48 часов, но обычно намного быстрее).
+
+### Сертификат SSL (Опционально)
+
+Чтобы включить HTTPS:
+
+1. Установите Certbot:
+```bash
+sudo apt install certbot python3-certbot-nginx
+```
+
+2. Получите сертификат SSL:
+```bash
+sudo certbot --nginx -d your-domain.com -d www.your-domain.com
+```
+
+3. Certbot автоматически обновит вашу конфигурацию Nginx. Сертификаты SSL будут автоматически обновляться.
+
+### Настройка брандмауэра
+
+Если вы используете брандмауэр UFW:
+
+```bash
+sudo ufw allow 'Nginx Full'
+sudo ufw enable
+```
+
+Это позволит HTTP (80) и HTTPS (443) трафик.
+
 ### Резервное копирование
 
-Данные PostgreSQL хранятся в Docker volume. Для создания резервной копии базы данных:
+Данные PostgreSQL хранятся в Docker volume. Чтобы создать резервную копию базы данных:
 
 ```bash
 docker-compose exec postgres pg_dump -U user fundarb > backup.sql
 ```
 
-Для восстановления из резервной копии:
+Чтобы восстановить из резервной копии:
 
 ```bash
 docker-compose exec -T postgres psql -U user fundarb < backup.sql
@@ -431,7 +603,7 @@ docker-compose exec -T postgres psql -U user fundarb < backup.sql
 
 ## Разработка
 
-Для локального запуска приложения:
+Чтобы запустить приложение локально:
 
 1. Установите зависимости:
 ```bash
