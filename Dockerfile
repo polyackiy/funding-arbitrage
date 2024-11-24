@@ -15,6 +15,9 @@ COPY prisma ./prisma/
 # Install dependencies
 RUN npm ci
 
+# Create public directory
+RUN mkdir -p public
+
 # Copy project files
 COPY . .
 
@@ -39,13 +42,15 @@ RUN apk add --no-cache bash
 # Set working directory
 WORKDIR /app
 
+# Create public directory
+RUN mkdir -p public
+
 # Copy package files and install production dependencies
 COPY package*.json ./
 RUN npm install --production
 
 # Copy built application from builder stage
 COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/public ./public
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
