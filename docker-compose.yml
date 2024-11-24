@@ -4,8 +4,7 @@ services:
     build: 
       context: .
       target: runner
-    ports:
-      - "3000:3000"
+    network_mode: host
     environment:
       - DATABASE_URL=${DATABASE_URL}
     depends_on:
@@ -14,6 +13,7 @@ services:
 
   postgres:
     image: postgres:14
+    network_mode: host
     environment:
       - POSTGRES_USER=user
       - POSTGRES_PASSWORD=password
@@ -26,6 +26,7 @@ services:
     build:
       context: .
       target: worker
+    network_mode: host
     environment:
       - DATABASE_URL=${DATABASE_URL}
     depends_on:
@@ -36,6 +37,7 @@ services:
     build:
       context: .
       target: worker
+    network_mode: host
     command: ["node", "--experimental-specifier-resolution=node", "dist/worker/spreads.js"]
     environment:
       - DATABASE_URL=${DATABASE_URL}
@@ -47,6 +49,7 @@ services:
     build:
       context: .
       target: worker
+    network_mode: host
     command: ["node", "--experimental-specifier-resolution=node", "dist/worker/cleanup.js"]
     environment:
       - DATABASE_URL=${DATABASE_URL}
