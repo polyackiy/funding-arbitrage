@@ -1,17 +1,9 @@
 version: '3.8'
-
-x-build-args: &build-args
-  DOCKER_BUILDKIT: 1
-  COMPOSE_DOCKER_CLI_BUILD: 1
-  BUILDKIT_INLINE_CACHE: 1
-
 services:
   app:
     build: 
       context: .
       target: runner
-      args:
-        <<: *build-args
     ports:
       - "3000:3000"
     environment:
@@ -34,8 +26,6 @@ services:
     build:
       context: .
       target: worker
-      args:
-        <<: *build-args
     environment:
       - DATABASE_URL=${DATABASE_URL}
     depends_on:
@@ -46,8 +36,6 @@ services:
     build:
       context: .
       target: worker
-      args:
-        <<: *build-args
     command: ["node", "--experimental-specifier-resolution=node", "dist/worker/spreads.js"]
     environment:
       - DATABASE_URL=${DATABASE_URL}
@@ -59,8 +47,6 @@ services:
     build:
       context: .
       target: worker
-      args:
-        <<: *build-args
     command: ["node", "--experimental-specifier-resolution=node", "dist/worker/cleanup.js"]
     environment:
       - DATABASE_URL=${DATABASE_URL}

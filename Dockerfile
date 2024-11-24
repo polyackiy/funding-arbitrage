@@ -1,66 +1,60 @@
-# syntax=docker/dockerfile:1.4
 # Build stage
 FROM node:18-alpine AS builder
 
-# Add multiple Alpine mirrors for redundancy and speed
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories && \
-    echo "https://mirrors.cloud.tencent.com/alpine/v3.18/main" >> /etc/apk/repositories && \
-    echo "https://mirrors.cloud.tencent.com/alpine/v3.18/community" >> /etc/apk/repositories && \
-    echo "https://mirrors.aliyun.com/alpine/v3.18/main" >> /etc/apk/repositories && \
-    echo "https://mirrors.aliyun.com/alpine/v3.18/community" >> /etc/apk/repositories && \
-    apk update && \
-    apk add --no-cache bash
+# Install build dependencies
+RUN apk add --no-cache bash
 
 # Set working directory
 WORKDIR /app
 
-# Copy package files first to leverage Docker cache
+# Copy package files
 COPY package*.json ./
 COPY tsconfig*.json ./
+COPY prisma ./prisma/
 
 # Install dependencies
-RUN npm ci --no-audit --no-fund
+RUN npm ci
 
-# Copy prisma schema (needed for generation)
-COPY prisma ./prisma/
+# Copy project files
+COPY . .
 
 # Generate Prisma client
 RUN npx prisma generate
 
-# Copy rest of the project files
-COPY . .
+# Build Next.js application
+RUN npm run build
 
-# Build Next.js application and worker
-RUN npm run build && \
-    npm run build:worker && \
-    npx tsc --project tsconfig.worker.json
+# Build worker
+RUN npm run build:worker
+
+# Compile TypeScript files for worker
+RUN npx tsc --project tsconfig.worker.json
 
 # Production stage
 FROM node:18-alpine AS runner
 
-# Add multiple Alpine mirrors for redundancy and speed
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories && \
-    echo "https://mirrors.cloud.tencent.com/alpine/v3.18/main" >> /etc/apk/repositories && \
-    echo "https://mirrors.cloud.tencent.com/alpine/v3.18/community" >> /etc/apk/repositories && \
-    echo "https://mirrors.aliyun.com/alpine/v3.18/main" >> /etc/apk/repositories && \
-    echo "https://mirrors.aliyun.com/alpine/v3.18/community" >> /etc/apk/repositories && \
-    apk update && \
-    apk add --no-cache bash
+# Install runtime dependencies
+RUN apk add --no-cache bash
 
+# Set working directory
 WORKDIR /app
 
 # Copy package files and install production dependencies
 COPY package*.json ./
-RUN npm ci --only=production --no-audit --no-fund
+RUN npm install --production
 
 # Copy built application from builder stage
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/prisma ./prisma
+
+# Copy necessary configuration files
 COPY next.config.js .
+COPY prisma ./prisma
 
 # Set NODE_ENV
 ENV NODE_ENV=production
@@ -71,28 +65,19 @@ EXPOSE 3000
 # Start the application (will be overridden by docker-compose for workers)
 CMD ["npm", "start"]
 
-# Worker stage
+# Worker
 FROM node:18-alpine AS worker
 
-# Add multiple Alpine mirrors for redundancy and speed
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories && \
-    echo "https://mirrors.cloud.tencent.com/alpine/v3.18/main" >> /etc/apk/repositories && \
-    echo "https://mirrors.cloud.tencent.com/alpine/v3.18/community" >> /etc/apk/repositories && \
-    echo "https://mirrors.aliyun.com/alpine/v3.18/main" >> /etc/apk/repositories && \
-    echo "https://mirrors.aliyun.com/alpine/v3.18/community" >> /etc/apk/repositories && \
-    apk update && \
-    apk add --no-cache bash
+# Install runtime dependencies
+RUN apk add --no-cache bash
 
+# Set working directory
 WORKDIR /app
 
 # Copy package files and install production dependencies
 COPY package*.json ./
-RUN npm ci --only=production --no-audit --no-fund
-
-# Copy necessary files from runner
 COPY --from=runner /app/dist ./dist
-COPY --from=runner /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=runner /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=runner /app/node_modules ./node_modules
 COPY --from=runner /app/prisma ./prisma
 
 # Set NODE_ENV
