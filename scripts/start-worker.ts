@@ -1,45 +1,36 @@
-const { spawn } = require('child_process');
-const path = require('path');
+import { PrismaClient } from '@prisma/client';
+import { fetchFundingRates } from '../worker/funding-rates';
+import '../worker/spreads';  // Import spreads worker
 
-function startWorker(): void {
-  const workerPath = path.join(__dirname, '../worker/spreads.ts');
-  
-  console.log('Starting spreads worker...');
-  
-  const worker = spawn('ts-node', [workerPath], {
-    stdio: 'inherit',
-    env: process.env
-  });
+const prisma = new PrismaClient();
 
-  worker.on('error', (error: Error) => {
-    console.error('Failed to start worker:', error);
-    process.exit(1);
-  });
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  process.exit(1);
+});
 
-  worker.on('exit', (code: number | null, signal: string | null) => {
-    if (code !== null) {
-      console.log(`Worker process exited with code ${code}`);
-    } else if (signal !== null) {
-      console.log(`Worker process killed with signal ${signal}`);
-    }
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  process.exit(1);
+});
+
+async function main() {
+  try {
+    console.log('Starting workers...');
     
-    // Restart the worker after a short delay
-    console.log('Restarting worker in 5 seconds...');
-    setTimeout(startWorker, 5000);
-  });
-
-  // Handle process termination
-  process.on('SIGTERM', () => {
-    console.log('Received SIGTERM. Gracefully shutting down worker...');
-    worker.kill('SIGTERM');
-  });
-
-  process.on('SIGINT', () => {
-    console.log('Received SIGINT. Gracefully shutting down worker...');
-    worker.kill('SIGINT');
-    process.exit(0);
-  });
+    while (true) {
+      console.log('Fetching funding rates...');
+      await fetchFundingRates(prisma);
+      console.log('Waiting for next interval...');
+      await new Promise(resolve => setTimeout(resolve, 60000)); // 1 minute interval
+    }
+  } catch (error) {
+    console.error('Error in main worker loop:', error);
+    process.exit(1);
+  }
 }
 
-// Start the worker process
-startWorker();
+main().catch((error) => {
+  console.error('Fatal error:', error);
+  process.exit(1);
+});

@@ -38,7 +38,7 @@ export class BinanceAPI extends BaseExchangeAPI {
         timestamp: item.time,
       }));
     } catch (error) {
-      return this.handleError(error);
+      return this.handleError<FundingRate>(error);
     }
   }
 
@@ -58,11 +58,7 @@ export class BinanceAPI extends BaseExchangeAPI {
         };
       });
     } catch (error) {
-      console.error('Binance API error:', error);
-      if (axios.isAxiosError(error)) {
-        console.error('Error details:', error.response?.data);
-      }
-      return [];
+      return this.handleError<SpreadData>(error);
     }
   }
 

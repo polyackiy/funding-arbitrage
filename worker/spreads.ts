@@ -1,7 +1,7 @@
-const { PrismaClient } = require('@prisma/client');
-const { getHyperliquidMarkOracleSpread } = require('../lib/api/exchanges/hyperliquid');
-const { getBinanceMarkOracleSpread } = require('../lib/api/exchanges/binance');
-const { getBybitMarkOracleSpread } = require('../lib/api/exchanges/bybit');
+import { PrismaClient } from '@prisma/client';
+import { getHyperliquidMarkOracleSpread } from '../lib/api/exchanges/hyperliquid';
+import { getBinanceMarkOracleSpread } from '../lib/api/exchanges/binance';
+import { getBybitMarkOracleSpread } from '../lib/api/exchanges/bybit';
 
 interface SpreadData {
   symbol: string;
@@ -25,12 +25,25 @@ function normalizeSymbol(symbol: string, exchange: string): string {
 
 async function collectSpreads(): Promise<void> {
   try {
+    console.log('Starting to collect spreads...');
+    
     // Get spreads from all exchanges
     const [hyperliquidSpreads, binanceSpreads, bybitSpreads] = await Promise.all([
-      getHyperliquidMarkOracleSpread(),
-      getBinanceMarkOracleSpread(),
-      getBybitMarkOracleSpread(),
+      getHyperliquidMarkOracleSpread().catch(error => {
+        console.error('Error fetching Hyperliquid spreads:', error);
+        return [];
+      }),
+      getBinanceMarkOracleSpread().catch(error => {
+        console.error('Error fetching Binance spreads:', error);
+        return [];
+      }),
+      getBybitMarkOracleSpread().catch(error => {
+        console.error('Error fetching Bybit spreads:', error);
+        return [];
+      }),
     ]);
+
+    console.log(`Received spreads - Hyperliquid: ${hyperliquidSpreads.length}, Binance: ${binanceSpreads.length}, Bybit: ${bybitSpreads.length}`);
 
     // Current timestamp
     const timestamp = new Date();
@@ -81,8 +94,21 @@ async function collectSpreads(): Promise<void> {
   }
 }
 
+// Handle process termination
+process.on('SIGTERM', () => {
+  console.log('Received SIGTERM. Gracefully shutting down...');
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('Received SIGINT. Gracefully shutting down...');
+  process.exit(0);
+});
+
 // Collect spreads every 15 seconds
-setInterval(collectSpreads, 15000);
+const INTERVAL = 15000; // 15 seconds
+console.log(`Starting spreads collector with ${INTERVAL}ms interval`);
+setInterval(collectSpreads, INTERVAL);
 
 // Initial collection
 collectSpreads();

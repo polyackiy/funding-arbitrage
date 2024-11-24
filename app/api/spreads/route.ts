@@ -5,14 +5,14 @@ const prisma = new PrismaClient();
 
 export async function GET() {
   try {
-    // Get spreads for the last 30 seconds
-    const thirtySecondsAgo = new Date(Date.now() - 30 * 1000);
+    // Get spreads for the last 5 minutes
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
 
     // Get all unique symbols
     const symbols = await prisma.spread.findMany({
       where: {
         timestamp: {
-          gte: thirtySecondsAgo,
+          gte: fiveMinutesAgo,
         },
       },
       select: {
@@ -34,7 +34,7 @@ export async function GET() {
             symbol,
             exchange,
             timestamp: {
-              gte: thirtySecondsAgo,
+              gte: fiveMinutesAgo,
             },
           },
           orderBy: {

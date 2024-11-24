@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { FundingRate } from '../types';
+import { BaseExchangeAPI } from './base';
 
 interface HyperliquidCoin {
   name: string;
@@ -47,19 +48,29 @@ export interface SpreadData {
   spread: number;
 }
 
-export class HyperliquidAPI {
+export class HyperliquidAPI extends BaseExchangeAPI {
   protected exchangeName = 'Hyperliquid';
   private readonly baseUrl = 'https://api.hyperliquid.xyz';
 
   async getFundingRates(): Promise<ExtendedFundingRate[]> {
     try {
+      console.log('Fetching funding rates from Hyperliquid...');
       const response = await axios.post<HyperliquidResponse>(`${this.baseUrl}/info`, {
         type: "metaAndAssetCtxs"
       });
 
+      console.log('Received response from Hyperliquid:', {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+        dataType: typeof response.data,
+        isArray: Array.isArray(response.data),
+        length: Array.isArray(response.data) ? response.data.length : 'N/A'
+      });
+
       if (!Array.isArray(response.data) || response.data.length !== 2) {
         console.error('Invalid response format:', response.data);
-        return [];
+        return this.handleError<ExtendedFundingRate>(new Error('Invalid response format'));
       }
 
       const [meta, fundingInfo] = response.data;
@@ -67,21 +78,22 @@ export class HyperliquidAPI {
 
       if (!universe || !Array.isArray(fundingInfo)) {
         console.error('Invalid data structure:', { meta, fundingInfo });
-        return [];
+        return this.handleError<ExtendedFundingRate>(new Error('Invalid data structure'));
       }
 
       const fundingRates: ExtendedFundingRate[] = [];
 
-      universe.forEach((coin: HyperliquidCoin, index: number) => {
-        const data = fundingInfo[index];
+      for (let i = 0; i < universe.length; i++) {
+        const coin = universe[i];
+        const data = fundingInfo[i];
         if (!data || data.funding === undefined) {
-          return;
+          continue;
         }
 
         try {
           const rate = Number(data.funding);
           if (isNaN(rate)) {
-            return;
+            continue;
           }
 
           const impactPxsArray = Array.isArray(data.impactPxs) ? data.impactPxs : [];
@@ -103,26 +115,39 @@ export class HyperliquidAPI {
             impactPxs
           });
         } catch (error) {
-          console.error(`Error processing ${coin.name}:`, error);
+          if (error instanceof Error) {
+            console.error(`Error processing ${coin.name}:`, error.message, '\nStack:', error.stack);
+          } else {
+            console.error(`Error processing ${coin.name}:`, error);
+          }
         }
-      });
+      }
 
       return fundingRates;
     } catch (error) {
-      console.error('Error fetching Hyperliquid funding rates:', error);
-      return [];
+      return this.handleError<ExtendedFundingRate>(error);
     }
   }
 
   async getMarkOracleSpread(): Promise<SpreadData[]> {
     try {
+      console.log('Fetching mark/oracle spreads from Hyperliquid...');
       const response = await axios.post<HyperliquidResponse>(`${this.baseUrl}/info`, {
         type: "metaAndAssetCtxs"
       });
 
+      console.log('Received response from Hyperliquid:', {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+        dataType: typeof response.data,
+        isArray: Array.isArray(response.data),
+        length: Array.isArray(response.data) ? response.data.length : 'N/A'
+      });
+
       if (!Array.isArray(response.data) || response.data.length !== 2) {
         console.error('Invalid response format:', response.data);
-        return [];
+        return this.handleError<SpreadData>(new Error('Invalid response format'));
       }
 
       const [meta, fundingInfo] = response.data;
@@ -130,15 +155,16 @@ export class HyperliquidAPI {
 
       if (!universe || !Array.isArray(fundingInfo)) {
         console.error('Invalid data structure:', { meta, fundingInfo });
-        return [];
+        return this.handleError<SpreadData>(new Error('Invalid data structure'));
       }
 
       const spreads: SpreadData[] = [];
 
-      universe.forEach((coin: HyperliquidCoin, index: number) => {
-        const data = fundingInfo[index];
+      for (let i = 0; i < universe.length; i++) {
+        const coin = universe[i];
+        const data = fundingInfo[i];
         if (!data || !data.markPx || !data.oraclePx) {
-          return;
+          continue;
         }
 
         try {
@@ -146,7 +172,7 @@ export class HyperliquidAPI {
           const oraclePrice = Number(data.oraclePx);
           
           if (isNaN(markPrice) || isNaN(oraclePrice)) {
-            return;
+            continue;
           }
 
           spreads.push({
@@ -156,14 +182,17 @@ export class HyperliquidAPI {
             spread: ((markPrice - oraclePrice) / oraclePrice) * 10000 // Convert to basis points
           });
         } catch (error) {
-          console.error(`Error processing spread for ${coin.name}:`, error);
+          if (error instanceof Error) {
+            console.error(`Error processing spread for ${coin.name}:`, error.message, '\nStack:', error.stack);
+          } else {
+            console.error(`Error processing spread for ${coin.name}:`, error);
+          }
         }
-      });
+      }
 
       return spreads;
     } catch (error) {
-      console.error('Error fetching Hyperliquid spreads:', error);
-      return [];
+      return this.handleError<SpreadData>(error);
     }
   }
 }

@@ -38,8 +38,8 @@ import {
   SortingState,
   flexRender,
 } from '@tanstack/react-table';
-import { ChevronDown, ChevronUp, ChevronsUpDown, Pin, PinOff, Loader2, ArrowUpDown } from 'lucide-react';
-import { DataTableColumnHeader } from "@/components/ui/table";
+import { ArrowUpDown, Pin } from 'lucide-react';
+import { DataTableColumnHeader } from "@/components/ui/data-table-column-header";
 
 interface FundingTableProps {
   data: CombinedFundingData[];
@@ -69,15 +69,16 @@ export function FundingTable({
     return `${(annualRate * 100).toFixed(2)}%`;
   };
 
-  const calculateSpread = (impactPxs: [number | null, number | null] | undefined) => {
-    if (!impactPxs || impactPxs[0] === null || impactPxs[1] === null) return null;
+  const calculateSpread = (impactPxs: [number | undefined, number | undefined] | undefined) => {
+    if (!impactPxs) return null;
     const [buyPrice, sellPrice] = impactPxs;
-    // Рассчитываем спред в базисных пунктах: (sellPrice - buyPrice) / sellPrice * 10000
+    if (typeof buyPrice !== 'number' || typeof sellPrice !== 'number') return null;
+    // Calculate spread in basis points: (sellPrice - buyPrice) / sellPrice * 10000
     return ((sellPrice - buyPrice) / sellPrice) * 10000;
   };
 
-  const formatSpread = (spread: number | null) => {
-    if (spread === null) return 'N/A';
+  const formatSpread = (spread: number | null | undefined) => {
+    if (spread === null || spread === undefined) return 'N/A';
     return Math.round(spread).toString();
   };
 
@@ -195,8 +196,13 @@ export function FundingTable({
             break;
             
           default:
-            aVal = a[id];
-            bVal = b[id];
+            if (id === 'symbol') {
+              aVal = a.symbol;
+              bVal = b.symbol;
+            } else {
+              aVal = a.rates[id as keyof typeof a.rates];
+              bVal = b.rates[id as keyof typeof a.rates];
+            }
         }
         
         // Handle null/undefined values
@@ -396,7 +402,8 @@ export function FundingTable({
     },
     globalFilterFn: (row, columnId, filterValue) => {
       const value = row.getValue(columnId);
-      return value?.toString().toLowerCase().includes(filterValue.toLowerCase());
+      if (!value) return false;
+      return value.toString().toLowerCase().includes(filterValue.toLowerCase());
     },
     onSortingChange: setSorting,
     onGlobalFilterChange: setGlobalFilter,
@@ -488,22 +495,26 @@ export function FundingTable({
                       </TableCell>
                     ))}
                   </TableRow>
-                  {selectedExchanges[row.getValue('symbol')]?.length === 2 && (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center bg-muted/50 p-2 sm:p-4">
-                        <Button
-                          onClick={() => onOrderPlacement(
-                            row.getValue('symbol'),
-                            selectedExchanges[row.getValue('symbol')]
-                          )}
-                          variant="outline"
-                          className="my-1 sm:my-2 text-xs sm:text-sm"
-                        >
-                          Order Placement
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  )}
+                  {(() => {
+                    const symbol = row.getValue('symbol');
+                    if (typeof symbol !== 'string') return null;
+                    return selectedExchanges[symbol]?.length === 2 && (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center bg-muted/50 p-2 sm:p-4">
+                          <Button
+                            onClick={() => onOrderPlacement(
+                              symbol,
+                              selectedExchanges[symbol]
+                            )}
+                            variant="outline"
+                            className="my-1 sm:my-2 text-xs sm:text-sm"
+                          >
+                            Order Placement
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })()}
                 </React.Fragment>
               ))
             ) : (

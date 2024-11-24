@@ -1,17 +1,20 @@
-const { PrismaClient } = require('@prisma/client');
+import { PrismaClient, Spread } from '@prisma/client';
 
-interface Spread {
+interface SpreadRecord {
+  id: number;
   timestamp: Date;
-  exchange: string;
   symbol: string;
+  exchange: string;
   spread: number;
+  markPrice: number;
+  oraclePrice: number;
 }
 
 const prisma = new PrismaClient();
 
 async function checkSpreads(): Promise<void> {
   try {
-    // Получить последние 5 записей
+    // Get the latest 5 records
     const latestSpreads: Spread[] = await prisma.spread.findMany({
       take: 5,
       orderBy: {
@@ -20,20 +23,26 @@ async function checkSpreads(): Promise<void> {
     });
 
     if (latestSpreads.length > 0) {
-      console.log('Последние записи спредов:');
+      console.log('Latest spread records:');
       latestSpreads.forEach((spread: Spread) => {
-        console.log(`[${spread.timestamp.toISOString()}] ${spread.exchange} - ${spread.symbol}: ${spread.spread}`);
+        console.log(`[${spread.timestamp.toISOString()}] ${spread.exchange} - ${spread.symbol}: ${Number(spread.spread)}`);
       });
       
-      // Показать время последней записи
+      // Show time since last record
       const lastRecord: Spread = latestSpreads[0];
       const timeSinceLastRecord = Date.now() - lastRecord.timestamp.getTime();
-      console.log(`\nПоследняя запись была ${Math.round(timeSinceLastRecord / 1000)} секунд назад`);
+      const minutesSinceLastRecord = Math.floor(timeSinceLastRecord / (1000 * 60));
+      
+      console.log(`\nTime since last record: ${minutesSinceLastRecord} minutes`);
+      
+      if (minutesSinceLastRecord > 5) {
+        console.log('\nWARNING: No new records in the last 5 minutes!');
+      }
     } else {
-      console.log('Записей в базе данных не найдено');
+      console.log('No spread records found');
     }
   } catch (error) {
-    console.error('Ошибка при проверке базы данных:', error);
+    console.error('Error checking spreads:', error);
   } finally {
     await prisma.$disconnect();
   }

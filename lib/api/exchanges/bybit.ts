@@ -52,64 +52,57 @@ export class BybitAPI extends BaseExchangeAPI {
 
   async getFundingRates(): Promise<FundingRate[]> {
     try {
-      const response = await axios.get<BybitFundingResponse>(`${this.baseUrl}/v5/market/tickers`, {
-        params: {
-          category: 'linear'
+      const response = await axios.get<BybitFundingResponse>(
+        `${this.baseUrl}/v5/market/tickers`,
+        {
+          params: {
+            category: 'linear'
+          }
         }
-      });
+      );
 
-      if (response.data.retCode === 0 && response.data.result.list) {
-        return response.data.result.list.map(item => {
-          // Bybit returns funding rate as a percentage for 8 hours
-          // We need to:
-          // 1. Convert from percentage to decimal (divide by 100)
-          // 2. Convert to hourly rate (divide by 8)
-          // 3. Scale to match other exchanges (multiply by 100)
-          const fundingRate = Number(item.fundingRate);
-          
-          return {
-            symbol: this.normalizeSymbol(item.symbol),
-            rate: fundingRate / 8, // Already in percentage, just convert to hourly rate
-            timestamp: Date.now()
-          };
-        });
+      if (response.data.retCode !== 0) {
+        throw new Error(`Bybit API error: ${response.data.retMsg}`);
       }
 
-      return [];
+      return response.data.result.list.map(item => ({
+        symbol: item.symbol.replace('USDT', ''),
+        rate: parseFloat(item.fundingRate) / 8, // Already in percentage, just convert to hourly rate
+        timestamp: Date.now(),
+      }));
     } catch (error) {
-      return this.handleError(error);
+      return this.handleError<FundingRate>(error);
     }
   }
 
   async getMarkOracleSpread(): Promise<SpreadData[]> {
     try {
-      const response = await axios.get<BybitTickerResponse>(`${this.baseUrl}/v5/market/tickers`, {
-        params: {
-          category: 'linear'
+      const response = await axios.get<BybitTickerResponse>(
+        `${this.baseUrl}/v5/market/tickers`,
+        {
+          params: {
+            category: 'linear'
+          }
         }
+      );
+
+      if (response.data.retCode !== 0) {
+        throw new Error(`Bybit API error: ${response.data.retMsg}`);
+      }
+
+      return response.data.result.list.map(item => {
+        const markPrice = Number(item.markPrice);
+        const oraclePrice = Number(item.indexPrice);
+
+        return {
+          symbol: item.symbol.replace('USDT', ''),
+          markPrice,
+          oraclePrice,
+          spread: ((markPrice - oraclePrice) / oraclePrice) * 10000 // Convert to basis points
+        };
       });
-      
-      if (response.data.retCode === 0 && response.data.result.list) {
-        return response.data.result.list.map(item => {
-          const markPrice = Number(item.markPrice);
-          const oraclePrice = Number(item.indexPrice);
-          
-          return {
-            symbol: this.normalizeSymbol(item.symbol),
-            markPrice,
-            oraclePrice,
-            spread: ((markPrice - oraclePrice) / oraclePrice) * 10000 // Convert to basis points
-          };
-        });
-      }
-      
-      return [];
     } catch (error) {
-      console.error('Bybit API error:', error);
-      if (axios.isAxiosError(error)) {
-        console.error('Error details:', error.response?.data);
-      }
-      return [];
+      return this.handleError<SpreadData>(error);
     }
   }
 
