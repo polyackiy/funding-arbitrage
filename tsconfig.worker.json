@@ -21,7 +21,8 @@
     "paths": {
       "@/*": ["./*"]
     },
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "noImplicitAny": false
   },
   "include": ["scripts/**/*.ts", "lib/**/*.ts"],
   "exclude": ["node_modules", "dist"]

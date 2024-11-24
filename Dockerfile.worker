@@ -7,19 +7,16 @@ WORKDIR /app
 # Устанавливаем необходимые инструменты
 RUN apk add --no-cache bash
 
-# Копируем package.json и package-lock.json
+# Копируем только необходимые файлы для установки зависимостей
 COPY package*.json ./
+COPY tsconfig*.json ./
+COPY prisma ./prisma
 
 # Устанавливаем зависимости для сборки
-RUN npm install typescript @types/node ts-node tslib @types/node
+RUN npm install -D typescript @types/node ts-node tslib @types/node
 
 # Устанавливаем production зависимости
 RUN npm ci --only=production
-
-# Копируем конфигурационные файлы
-COPY tsconfig.json ./
-COPY tsconfig.worker.json ./
-COPY prisma ./prisma
 
 # Генерируем Prisma клиент
 RUN npx prisma generate
@@ -38,7 +35,7 @@ RUN npx tsc --project tsconfig.worker.json
 RUN chmod +x scripts/cleanup-worker.sh
 
 # Устанавливаем рабочую директорию
-WORKDIR /app/dist
+WORKDIR /app
 
 # По умолчанию запускаем spreads worker
-CMD ["node", "scripts/start-worker.js"]
+CMD ["node", "dist/scripts/start-worker.js"]

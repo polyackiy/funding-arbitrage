@@ -5,11 +5,10 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "build:production": "DISABLE_ESLINT_PLUGIN=true next build",
     "start": "next start",
     "lint": "next lint",
-    "worker:spreads": "node dist/scripts/start-worker.js",
-    "worker:cleanup": "node dist/scripts/cleanup-worker.js",
+    "worker:spreads": "ts-node scripts/start-worker.ts",
+    "worker:cleanup": "bash scripts/cleanup-worker.sh",
     "check-spreads": "ts-node scripts/check-spreads.ts"
   },
   "dependencies": {
