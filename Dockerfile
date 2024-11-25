@@ -2,7 +2,8 @@
 FROM node:18-alpine AS builder
 
 # Install build dependencies with custom DNS
-RUN apk add --no-cache --network-timeout=60 bash --repository=http://dl-cdn.alpinelinux.org/alpine/v3.18/main/
+RUN apk update && \
+    apk add --no-cache bash
 
 # Set working directory
 WORKDIR /app
@@ -36,8 +37,9 @@ RUN npx tsc --project tsconfig.worker.json
 # Production stage for Next.js app
 FROM node:18-alpine AS runner
 
-# Install runtime dependencies with custom DNS
-RUN apk add --no-cache --network-timeout=60 bash --repository=http://dl-cdn.alpinelinux.org/alpine/v3.18/main/
+# Install runtime dependencies
+RUN apk update && \
+    apk add --no-cache bash
 
 # Set working directory
 WORKDIR /app
@@ -73,8 +75,9 @@ CMD ["npm", "start"]
 # Worker stage (without Next.js files)
 FROM node:18-alpine AS worker
 
-# Install runtime dependencies with custom DNS
-RUN apk add --no-cache --network-timeout=60 bash --repository=http://dl-cdn.alpinelinux.org/alpine/v3.18/main/
+# Install runtime dependencies
+RUN apk update && \
+    apk add --no-cache bash
 
 # Set working directory
 WORKDIR /app
