@@ -1,12 +1,8 @@
 # Build stage
 FROM node:18-alpine AS builder
 
-# Configure DNS for Alpine package manager
-RUN echo "nameserver 8.8.8.8" > /etc/resolv.conf && \
-    echo "nameserver 8.8.4.4" >> /etc/resolv.conf
-
-# Install build dependencies
-RUN apk add --no-cache --network-timeout=60 bash
+# Install build dependencies with custom DNS
+RUN apk add --no-cache --network-timeout=60 bash --repository=http://dl-cdn.alpinelinux.org/alpine/v3.18/main/
 
 # Set working directory
 WORKDIR /app
@@ -40,12 +36,8 @@ RUN npx tsc --project tsconfig.worker.json
 # Production stage for Next.js app
 FROM node:18-alpine AS runner
 
-# Configure DNS for Alpine package manager
-RUN echo "nameserver 8.8.8.8" > /etc/resolv.conf && \
-    echo "nameserver 8.8.4.4" >> /etc/resolv.conf
-
-# Install runtime dependencies
-RUN apk add --no-cache --network-timeout=60 bash
+# Install runtime dependencies with custom DNS
+RUN apk add --no-cache --network-timeout=60 bash --repository=http://dl-cdn.alpinelinux.org/alpine/v3.18/main/
 
 # Set working directory
 WORKDIR /app
@@ -81,12 +73,8 @@ CMD ["npm", "start"]
 # Worker stage (without Next.js files)
 FROM node:18-alpine AS worker
 
-# Configure DNS for Alpine package manager
-RUN echo "nameserver 8.8.8.8" > /etc/resolv.conf && \
-    echo "nameserver 8.8.4.4" >> /etc/resolv.conf
-
-# Install runtime dependencies
-RUN apk add --no-cache --network-timeout=60 bash
+# Install runtime dependencies with custom DNS
+RUN apk add --no-cache --network-timeout=60 bash --repository=http://dl-cdn.alpinelinux.org/alpine/v3.18/main/
 
 # Set working directory
 WORKDIR /app
